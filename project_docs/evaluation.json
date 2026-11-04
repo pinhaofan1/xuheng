@@ -1,0 +1,1742 @@
+{
+  "baseline_commit": "8dba88fad06368a632522ce6f98e17f9cfc7db2a",
+  "engine_version": "xuheng-rules-1",
+  "generated_at": "2026-11-03T14:16:38.536058+00:00",
+  "dataset_hash": "18df6568f1900fb31558f86d70586d4620142121c0a590c48a8290dbda3debd5",
+  "dataset": {
+    "total": 80,
+    "development": 20,
+    "evaluation": 60,
+    "provenance": "agent-authored synthetic regression cases, not independently human-reviewed or blind data"
+  },
+  "scope": "explicit actor/action conclusions from the pinned rule detector; not a comparison with the full AI review service",
+  "metrics": {
+    "baseline": {
+      "tp": 24,
+      "fp": 29,
+      "fn": 2,
+      "precision": 0.4528301886792453,
+      "recall": 0.9230769230769231,
+      "f1": 0.6075949367088607
+    },
+    "xuheng": {
+      "tp": 24,
+      "fp": 3,
+      "fn": 2,
+      "precision": 0.8888888888888888,
+      "recall": 0.9230769230769231,
+      "f1": 0.9056603773584906
+    }
+  },
+  "timing": {
+    "baseline": {
+      "n": 60,
+      "median_ms": 0.004149999767832924,
+      "p95_ms": 0.0071999984356807545
+    },
+    "xuheng": {
+      "n": 60,
+      "median_ms": 0.011749999430321623,
+      "p95_ms": 0.019600000086938962
+    }
+  },
+  "evidence": {
+    "valid": 27,
+    "total": 27
+  },
+  "uncertain_cases": 7,
+  "coverage": 0.8833333333333333,
+  "model_calls": 0,
+  "details": [
+    {
+      "id": "development-01",
+      "split": "development",
+      "category": "development",
+      "text": "林烬释放水球。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-02",
+      "split": "development",
+      "category": "development",
+      "text": "沈澜施展火系法术。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-03",
+      "split": "development",
+      "category": "development",
+      "text": "林烬施展冰系法术。",
+      "expected": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-04",
+      "split": "development",
+      "category": "development",
+      "text": "沈澜释放雷电。",
+      "expected": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-05",
+      "split": "development",
+      "category": "development",
+      "text": "林烬召唤风系法术。",
+      "expected": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-06",
+      "split": "development",
+      "category": "development",
+      "text": "林烬释放火球，沈澜施展水系法术。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-07",
+      "split": "development",
+      "category": "development",
+      "text": "林烬没有释放水球。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-08",
+      "split": "development",
+      "category": "development",
+      "text": "沈澜不会释放火球。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-09",
+      "split": "development",
+      "category": "development",
+      "text": "林烬站在山脚，沈澜走向城门。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-10",
+      "split": "development",
+      "category": "development",
+      "text": "林烬看着远处的水球。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-11",
+      "split": "development",
+      "category": "development",
+      "text": "阿烬施放水球。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-12",
+      "split": "development",
+      "category": "development",
+      "text": "阿澜释放火球。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-13",
+      "split": "development",
+      "category": "development",
+      "text": "林烬施展水系法术，沈澜施展火系法术。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-14",
+      "split": "development",
+      "category": "development",
+      "text": "林烬离开了。沈澜释放火球。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-15",
+      "split": "development",
+      "category": "development",
+      "text": "沈澜施展水系法术，然后释放火球。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "development-16",
+      "split": "development",
+      "category": "development",
+      "text": "如果林烬释放水球，就能灭火。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "development-17",
+      "split": "development",
+      "category": "development",
+      "text": "沈澜声称自己释放火球。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "development-18",
+      "split": "development",
+      "category": "development",
+      "text": "林烬和沈澜施展水系法术。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "development-19",
+      "split": "development",
+      "category": "development",
+      "text": "沈澜说：“我释放火球。”",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "development-20",
+      "split": "development",
+      "category": "development",
+      "text": "他释放火球。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "positive-01",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀推开木窗，苏檀释放水球，浇灭了院中的余火。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-02",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "顾岚在屋脊停下，顾岚施展火系法术，封住了退路。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-03",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀施放冰系魔法，霜沿着石栏蔓延。",
+      "expected": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-04",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "顾岚凝聚雷电，电光击穿了夜色。",
+      "expected": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-05",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀召唤风系法术，将落叶吹回庭院。",
+      "expected": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-06",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "🌊顾岚释放火球。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-07",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "小檀施展水系法术，渡口传来急促的脚步声。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-08",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "老顾发动冰系法术，脚下的泥水结成了冰。",
+      "expected": [
+        [
+          "b",
+          "ice_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "ice_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "ice_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-09",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀使出雷系法术，铁门随之震动。",
+      "expected": [
+        [
+          "a",
+          "lightning_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [
+        [
+          "a",
+          "lightning_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-10",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "顾岚操控风系魔法，小舟慢慢转向。",
+      "expected": [
+        [
+          "b",
+          "wind_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "wind_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "wind_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-11",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀抬起手掌，随后释放水球。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-12",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "顾岚释放水球，然后释放火球。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-13",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀祭出冰系法术，白霜压低了枝头。",
+      "expected": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "ice_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-14",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "顾岚唤出火焰，火光映亮了旧墙。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-15",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀操纵水球，水珠穿过了门环。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-16",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "雨停后，顾岚施放雷电，屋檐上的水滴齐齐落下。",
+      "expected": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-17",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀凝聚风系法术，众人屏住了呼吸。",
+      "expected": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-18",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "顾岚召唤火球。火光照着渡口的名字。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "positive-19",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "顾岚打出火球，船帆立刻燃烧起来。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": false
+    },
+    {
+      "id": "positive-20",
+      "split": "evaluation",
+      "category": "positive",
+      "text": "苏檀手掌翻起，一枚水球成形，随后飞向长街。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": false
+    },
+    {
+      "id": "negative-01",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀释放火球，火光照见了脚边的足迹。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-02",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚施展水系法术，水声盖住了谈话。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-03",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "小檀凝聚火焰，守住了破损的窗。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-04",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "老顾召唤水球，洗去了石碑上的泥。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-05",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀没有释放水球，而是沿着墙根离开。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-06",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚并未施展火系法术，庭院依旧漆黑。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-07",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀不曾召唤风系法术。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "wind_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-08",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚无法释放雷电，只能等待援手。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "lightning_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-09",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀看见水球，向后退了一步。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-10",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚躲开火球，衣角擦过了门框。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-11",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀站在水边，顾岚坐在树下。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-12",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀收起旧地图。风吹过长街。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-13",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚注视着火焰，想起了往日的朋友。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-14",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀擅长火系法术，今天没有出手。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-15",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚施展水系法术；苏檀凝聚火焰。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-16",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀释放火球，然后释放火球照明。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-17",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚没有犹豫，随后施展水系法术。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-18",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "火球落在顾岚面前，顾岚向后退去。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-19",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "苏檀翻开书页。书上写着：水球术。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "negative-20",
+      "split": "evaluation",
+      "category": "negative",
+      "text": "顾岚吸收火焰，手中的护符发出微光。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-01",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "苏檀释放火球，顾岚施展水系法术。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-02",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "苏檀施展水系法术，顾岚释放火球。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-03",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "苏檀站在岸边。顾岚释放火球。",
+      "expected": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-04",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "顾岚看向苏檀，苏檀施展水系法术。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-05",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "苏檀召唤火球，顾岚静静等待。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-06",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "顾岚施展水系法术，苏檀没有释放水球。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-07",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "苏檀释放水球帮助顾岚。",
+      "expected": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-08",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "顾岚坐下，苏檀使出雷系法术。",
+      "expected": [
+        [
+          "a",
+          "lightning_magic"
+        ]
+      ],
+      "expect_uncertain": false,
+      "baseline": [],
+      "xuheng": [
+        [
+          "a",
+          "lightning_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-09",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "小檀释放火球，老顾释放水球。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ],
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "multi-10",
+      "split": "evaluation",
+      "category": "multi",
+      "text": "苏檀的身旁，顾岚施展水系法术。",
+      "expected": [],
+      "expect_uncertain": false,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 0,
+      "passed": true
+    },
+    {
+      "id": "uncertain-01",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "苏檀和顾岚释放火球。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "uncertain-02",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "苏檀对顾岚施展火系法术。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "uncertain-03",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "假如苏檀释放水球，火势就会变小。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "uncertain-04",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "顾岚计划释放火球引开守卫。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "uncertain-05",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "据说苏檀施展水系法术，救下了陌生人。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "uncertain-06",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "顾岚说：“我释放火球的时候，天还没有亮。”",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "uncertain-07",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "苏檀停下脚步，他释放水球。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [],
+      "uncertain_count": 1,
+      "passed": true
+    },
+    {
+      "id": "uncertain-08",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "顾岚想起苏檀释放水球的那一夜。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": false
+    },
+    {
+      "id": "uncertain-09",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "顾岚借用火符释放火球，护符随后化为了灰烬。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "b",
+          "fire_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": false
+    },
+    {
+      "id": "uncertain-10",
+      "split": "evaluation",
+      "category": "uncertain",
+      "text": "苏檀释放水球，但那只是旁人眼中的幻术。",
+      "expected": [],
+      "expect_uncertain": true,
+      "baseline": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "xuheng": [
+        [
+          "a",
+          "water_magic"
+        ]
+      ],
+      "uncertain_count": 0,
+      "passed": false
+    }
+  ]
+}

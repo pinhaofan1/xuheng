@@ -1,0 +1,17 @@
+{
+  "verified_at": "2026-11-03",
+  "fixture": "xuheng-demo chapter 2, fictional seeded text",
+  "mode": "ai",
+  "model": "deepseek-flash",
+  "host": "api.deepseek.com",
+  "model_calls": 1,
+  "input_tokens": 585,
+  "output_tokens": 232,
+  "elapsed_ms": 2682.497,
+  "conflicts": 1,
+  "uncertain": 1,
+  "retrieved_source_count": 2,
+  "rejected_candidate_warnings": 0,
+  "scope": "one real integration smoke test; not an accuracy benchmark",
+  "credentials_included": false
+}

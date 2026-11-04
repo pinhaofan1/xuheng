@@ -1,0 +1,38 @@
+{
+  "fictional_demo": "xuheng-integration-demo",
+  "retrieval": {
+    "mode": "bm25+vector+reranker",
+    "sources": 2,
+    "chapters": [
+      1
+    ],
+    "usage": {
+      "chunks": 2,
+      "cached_vectors": 0,
+      "embedded_texts": 3,
+      "embedding": {
+        "calls": 1,
+        "input_tokens": 58
+      },
+      "rerank": {
+        "calls": 1,
+        "input_tokens": 236
+      }
+    },
+    "elapsed_ms": 978.46
+  },
+  "generation": {
+    "done": true,
+    "characters": 977,
+    "event_types": [
+      "chapter_start",
+      "chunk",
+      "done",
+      "outline",
+      "phase",
+      "session",
+      "session_done"
+    ],
+    "errors": []
+  }
+}

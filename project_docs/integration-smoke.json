@@ -1,0 +1,23 @@
+{
+  "model_name": "deepseek-flash",
+  "input_tokens": 486,
+  "output_tokens": 282,
+  "retrieval_mode": "bm25+vector+reranker",
+  "retrieval_usage": {
+    "chunks": 2,
+    "cached_vectors": 2,
+    "embedded_texts": 1,
+    "embedding": {
+      "calls": 1,
+      "input_tokens": 30
+    },
+    "rerank": {
+      "calls": 1,
+      "input_tokens": 276
+    }
+  },
+  "elapsed_ms": 2543.803,
+  "issues": 2,
+  "uncertain": 0,
+  "warnings": []
+}

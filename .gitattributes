@@ -1,0 +1,2 @@
+# Preserve the byte-for-byte upstream snapshot used by the evaluation checksum.
+scripts/evaluation/baseline_conflict_service.txt -text
