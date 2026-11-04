@@ -5,6 +5,9 @@ import { resolve } from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   build: {
+    // Open workbenches still reference their original hashed lazy chunks.
+    // Keep those assets when rebuilding; index.html is replaced normally.
+    emptyOutDir: false,
     // 大型 SPA；配合路由懒加载 + manualChunks 控制主包体
     chunkSizeWarningLimit: 1200,
     rollupOptions: {

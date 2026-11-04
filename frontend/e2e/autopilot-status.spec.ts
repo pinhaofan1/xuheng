@@ -38,6 +38,9 @@ test('cockpit shows a dead executor and never announces success before Start suc
   await protection.fill('1')
   await protection.press('Tab')
   await expect(protection).toHaveValue('1')
+  // Advance the intentional Start/Stop cooldown without a real-time sleep.
+  // This scenario verifies server acknowledgement rather than click debounce.
+  await page.clock.setFixedTime(new Date(Date.now() + 2000))
   await page.getByRole('dialog').getByRole('button', { name: '启动', exact: true }).click()
   await expect.poll(() => startReceived).toBe(true)
   expect(requestedProtection).toBe(1)

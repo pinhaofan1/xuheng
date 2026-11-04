@@ -148,7 +148,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, reactive, computed, watch, defineAsyncComponent, type AsyncComponentLoader } from 'vue'
+import AsyncPanelError from './AsyncPanelError.vue'
 import {
   FlashOutline, BookmarkOutline, GitBranchOutline,
   DocumentTextOutline, EarthOutline, LibraryOutline,
@@ -161,15 +162,19 @@ import {
   type TabGroup,
 } from '@/constants/workbenchTabs'
 
-const BiblePanel = defineAsyncComponent(() => import('../panels/BiblePanel.vue'))
-const ManuscriptPropsPanel = defineAsyncComponent(() => import('./ManuscriptPropsPanel.vue'))
-const KnowledgePanel = defineAsyncComponent(() => import('../knowledge/KnowledgePanel.vue'))
-const WorldbuildingPanel = defineAsyncComponent(() => import('./WorldbuildingPanel.vue'))
-const StoryEvolutionPanel = defineAsyncComponent(() => import('./StoryEvolutionPanel.vue'))
-const ForeshadowLedgerPanel = defineAsyncComponent(() => import('./ForeshadowLedgerPanel.vue'))
-const CharacterDialoguePanel = defineAsyncComponent(() => import('./CharacterDialoguePanel.vue'))
-const CurrentChapterContextPanel = defineAsyncComponent(() => import('./CurrentChapterContextPanel.vue'))
-const NarrativeDashboardPanel = defineAsyncComponent(() => import('./NarrativeDashboardPanel.vue'))
+function lazyPanel(loader: AsyncComponentLoader) {
+  return defineAsyncComponent({ loader, errorComponent: AsyncPanelError, timeout: 30_000 })
+}
+
+const BiblePanel = lazyPanel(() => import('../panels/BiblePanel.vue'))
+const ManuscriptPropsPanel = lazyPanel(() => import('./ManuscriptPropsPanel.vue'))
+const KnowledgePanel = lazyPanel(() => import('../knowledge/KnowledgePanel.vue'))
+const WorldbuildingPanel = lazyPanel(() => import('./WorldbuildingPanel.vue'))
+const StoryEvolutionPanel = lazyPanel(() => import('./StoryEvolutionPanel.vue'))
+const ForeshadowLedgerPanel = lazyPanel(() => import('./ForeshadowLedgerPanel.vue'))
+const CharacterDialoguePanel = lazyPanel(() => import('./CharacterDialoguePanel.vue'))
+const CurrentChapterContextPanel = lazyPanel(() => import('./CurrentChapterContextPanel.vue'))
+const NarrativeDashboardPanel = lazyPanel(() => import('./NarrativeDashboardPanel.vue'))
 
 const TAB_GROUPS = [
   { value: 'writing' as TabGroup,   label: '写作支撑' },

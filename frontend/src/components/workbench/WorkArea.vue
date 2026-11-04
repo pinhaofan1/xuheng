@@ -124,7 +124,7 @@
                       type="textarea"
                       placeholder="章节内容..."
                       :autosize="false"
-                      :readonly="true"
+                      :readonly="isAssistedReadOnly"
                       @update:value="handleContentChange"
                     />
                     <div
