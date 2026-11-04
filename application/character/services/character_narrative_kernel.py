@@ -89,6 +89,8 @@ class CharacterNarrativeKernel:
     ) -> ChapterCastPlan:
         bible = self._get_bible(novel_id)
         characters = list(getattr(bible, "characters", []) or []) if bible else []
+        characters = [c for c in characters if (getattr(c, "name", "") or "").strip()
+                      and not is_internal_entity_id(getattr(c, "name", ""))]
         chapter_id = self.get_chapter_node_id(novel_id, chapter_number)
         existing_slots = self.get_cast_slots(novel_id, chapter_number)
         existing_ids = {s.character_id for s in existing_slots}
@@ -602,6 +604,9 @@ class CharacterNarrativeKernel:
 
     def _apply_new_character_candidates(self, plan: ChapterCastPlan, chapter_id: str) -> None:
         for cand in plan.new_character_candidates:
+            if not (cand.name or "").strip() or is_internal_entity_id(cand.name):
+                plan.scheduling_log.append("rejected_internal_character_name")
+                continue
             if cand.recommendation == "ephemeral":
                 ephemeral_id = f"ephemeral-{plan.chapter_number}-{uuid.uuid5(uuid.NAMESPACE_URL, cand.name).hex[:8]}"
                 slot = CastSlot(

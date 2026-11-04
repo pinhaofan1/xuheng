@@ -2,7 +2,7 @@
 import re
 
 _INTERNAL_ID = re.compile(
-    r"^(?:ephemeral-\d+-[0-9a-f]{8}|(?:novel|book)-.+-char-.+|char-[0-9a-f]{8,}|"
+    r"^(?:(?:char|character)[\s_-]*\d+|ephemeral-\d+-[0-9a-f]{8}|(?:novel|book)-.+-char-.+|char-[0-9a-f]{8,}|"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$", re.I
 )
 

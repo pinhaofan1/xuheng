@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from types import SimpleNamespace
-from application.character.dtos.character_narrative import ChapterCastPlan, CastSlot
+from application.character.dtos.character_narrative import ChapterCastPlan, CastSlot, NewCharacterCandidate
 
 from application.character.services.character_narrative_kernel import CharacterNarrativeKernel
 
@@ -153,3 +153,23 @@ def test_old_unnamed_slot_is_not_fed_back_as_a_name_to_writing(monkeypatch):
     kernel = CharacterNarrativeKernel(bible_repository=_BibleRepo([]), chapter_element_repository=repo)
     monkeypatch.setattr(kernel, "get_chapter_node_id", lambda *a: "chapter-4")
     assert kernel.get_cast_slots("n1", 4) == []
+
+
+def test_internal_codes_are_not_admitted_as_new_character_names(monkeypatch):
+    calls=[]
+    kernel=CharacterNarrativeKernel(bible_repository=_BibleRepo([]),
+        bible_service=SimpleNamespace(add_character=lambda *args: calls.append(args)))
+    monkeypatch.setattr(kernel,'get_chapter_node_id',lambda *args:'chapter-4')
+    plan=ChapterCastPlan(novel_id='n1',chapter_number=4,new_character_candidates=[
+        NewCharacterCandidate(name=name,evidence=name,narrative_function='walk_on',recommendation=policy,
+                              confidence=0.9,reason='模型候选')
+        for name,policy in [('char 005','create_bible_character'),('ephemeral-4-deadbeef','ephemeral')]])
+    kernel.apply_cast_plan(plan)
+    assert plan.slots==[]
+    assert calls==[]
+
+
+def test_planning_does_not_reintroduce_old_profiles_named_with_ids():
+    kernel=CharacterNarrativeKernel(bible_repository=_BibleRepo([_Char('bad','char 005'),_Char('valid','林风')]),
+                                   story_node_repository=_StoryNodeRepo())
+    assert [slot.name for slot in kernel.plan_cast('n1',1).slots]==['林风']

@@ -11,6 +11,7 @@ from infrastructure.persistence.database.connection import DatabaseConnection
 from infrastructure.persistence.database.entity_display_labels import EntityDisplayLabels
 from infrastructure.persistence.database.sqlite_knowledge_repository import SqliteKnowledgeRepository
 from infrastructure.persistence.database.triple_repository import TripleRepository
+from domain.knowledge.entity_display import is_internal_entity_id
 
 
 @pytest.fixture
@@ -97,3 +98,41 @@ def test_cast_excludes_places_props_roles_and_unknown_ids_but_keeps_people(graph
     assert not names & {'黑市坊','青云宗','铜钥匙','主角','待命名人物（第9章）'}
     assert len(graph.relationships) == 1
     assert service.get_cast_graph('n2').characters == []
+
+
+@pytest.mark.parametrize('value', ['char 005','character_12','CHAR-003','ephemeral-4-deadbeef',
+    'novel-n1-char-1','char-0123456789ab','7c626bda-52f2-4d5f-83cd-cfd3639f6529'])
+def test_current_and_legacy_internal_id_formats_are_never_display_names(value):
+    assert is_internal_entity_id(value)
+
+
+def test_new_characters_in_two_new_books_pass_real_storage_and_graph_paths(graph_db, tmp_path):
+    from types import SimpleNamespace
+    from application.character.services.character_narrative_kernel import CharacterNarrativeKernel
+    from application.character.dtos.character_narrative import ChapterCastPlan, NewCharacterCandidate
+    from infrastructure.persistence.database.chapter_element_repository import ChapterElementRepository
+    from infrastructure.persistence.database.story_node_repository import StoryNodeRepository
+
+    repo=TripleRepository(graph_db)
+    kernel=CharacterNarrativeKernel(
+        bible_repository=SimpleNamespace(get_by_novel_id=lambda _: SimpleNamespace(characters=[])),
+        chapter_element_repository=ChapterElementRepository(graph_db.db_path),
+        story_node_repository=StoryNodeRepository(graph_db),
+    )
+    generated=[]
+    for book, actor_id, actor_name in [('n1','novel-n1-char-1','林风'),('n2','novel-n2-char-1','另一书人物')]:
+        plan=ChapterCastPlan(novel_id=book,chapter_number=4,new_character_candidates=[
+            NewCharacterCandidate(name='渡口小二',evidence='渡口小二递来消息',narrative_function='walk_on',
+                                  recommendation='ephemeral',confidence=0.9,reason='新出场')])
+        kernel.apply_cast_plan(plan)
+        slot=plan.slots[-1]
+        generated.append(slot.character_id)
+        assert any(s.name=='渡口小二' for s in kernel.get_cast_slots(book,4))
+        repo.persist_triple_sync(book,Triple(id='new-book-'+book,novel_id=book,subject_type='character',
+            subject_id=slot.character_id,predicate='认识',object_type='character',object_id=actor_id))
+        graph=CastService(tmp_path,SqliteKnowledgeRepository(graph_db),
+            CastRuntimeSettings(graph_cache_ttl_seconds=0)).get_cast_graph(book)
+        assert {c.name for c in graph.characters} == {'渡口小二',actor_name}
+        assert len(graph.relationships)==1
+        assert not any(is_internal_entity_id(c.name) for c in graph.characters)
+    assert generated[0]==generated[1]  # Same generated ID is safe in different books.
