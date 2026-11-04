@@ -5,7 +5,7 @@
 import type { CharacterDTO } from '../api/bible'
 
 /** 形如 char 005 / character_12 / CHAR-003 */
-const INTERNAL_GRAPH_ENTITY_RE = /^(?:char|character)[\s_-]*\d+$/i
+const INTERNAL_GRAPH_ENTITY_RE = /^(?:(?:char|character)[\s_-]*\d+|ephemeral-\d+-[0-9a-f]{8}|(?:novel|book)-.+-char-.+|char-[0-9a-f]{8,}|[0-9a-f]{8}-[0-9a-f-]{27,})$/i
 
 export function isInternalGraphEntityLabel(raw: string): boolean {
   return INTERNAL_GRAPH_ENTITY_RE.test((raw || '').trim())
@@ -168,20 +168,44 @@ function factTripleKey(t: { subject?: string; predicate?: string; object?: strin
 
 /** 过滤内部占位实体；合并 Bible 关系（按三元组去重）。 */
 export function mergeKnowledgeFactsWithBibleCharacters<
-  T extends { subject?: string; predicate?: string; object?: string; entity_type?: string | null },
+  T extends { subject?: string; predicate?: string; object?: string; entity_type?: string | null; attributes?: Record<string, unknown>; subject_entity_id?: string; object_entity_id?: string },
 >(kbFacts: T[], bibleChars: CharacterDTO[]): T[] {
-  const kb = kbFacts || []
+  const namesById = new Map((bibleChars || []).map(c => [c.id, c.name]))
+  const kb = (kbFacts || []).map(t => ({ ...t,
+    subject: namesById.get(t.subject_entity_id || '') || namesById.get(t.subject || '') || t.subject,
+    object: namesById.get(t.object_entity_id || '') || namesById.get(t.object || '') || t.object,
+  })) as T[]
   const bibleSynth = bibleRelationshipsToCharacterFacts(bibleChars || []) as unknown as T[]
 
+  const people = new Set((bibleChars || []).map(c => c.name))
+  for (const fact of kb) {
+    const attrs = fact.attributes || {}
+    if (fact.entity_type === 'character' && (attrs.subject_name_known === 'true' || attrs.object_type) && !isInternalGraphEntityLabel(fact.subject || '')) people.add(fact.subject || '')
+  }
+  const relationship = /师徒|父子|母子|父女|母女|兄弟|姐妹|夫妻|朋友|好友|挚友|知己|敌对|仇敌|对手|竞争|上下级|主仆|雇佣|认识|相识|熟悉/
+
   const kbChar = kb.filter(
-    t =>
-      t.entity_type === 'character' &&
-      !isInternalGraphEntityLabel((t.subject || '').trim()) &&
-      !isInternalGraphEntityLabel((t.object || '').trim()),
+    t => {
+      const attrs = t.attributes || {}
+      const objectType = attrs.resolved_object_type || attrs.object_type
+      const subjectType = attrs.resolved_subject_type || t.entity_type
+      return subjectType === 'character' &&
+        attrs.unresolved_subject_entity !== 'true' && attrs.unresolved_subject_entity !== true &&
+        attrs.unresolved_object_entity !== 'true' && attrs.unresolved_object_entity !== true &&
+        !isInternalGraphEntityLabel((t.subject || '').trim()) &&
+        !isInternalGraphEntityLabel((t.object || '').trim()) &&
+        (objectType ? objectType === 'character' : relationship.test(t.predicate || '') || (people.has(t.subject || '') && people.has(t.object || '')))
+    },
   )
 
-  const seen = new Set(kbChar.map(factTripleKey))
-  const merged: T[] = [...kbChar]
+  const seen = new Set<string>()
+  const merged: T[] = []
+  for (const fact of kbChar) {
+    const key = factTripleKey(fact)
+    if (seen.has(key) || fact.subject === fact.object) continue
+    seen.add(key)
+    merged.push(fact)
+  }
 
   for (const bf of bibleSynth) {
     const sub = String((bf as Record<string, unknown>).subject ?? '').trim()

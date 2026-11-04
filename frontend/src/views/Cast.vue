@@ -164,8 +164,8 @@
             <div v-if="formRel.id" class="side-form">
               <n-descriptions label-placement="left" :column="1" bordered size="small">
                 <n-descriptions-item label="关系 ID">{{ formRel.id }}</n-descriptions-item>
-                <n-descriptions-item label="起点人物">{{ formRel.source_id }}</n-descriptions-item>
-                <n-descriptions-item label="终点人物">{{ formRel.target_id }}</n-descriptions-item>
+                <n-descriptions-item label="起点人物">{{ graph.characters.find(c => c.id === formRel.source_id)?.name || '待确认人物' }}</n-descriptions-item>
+                <n-descriptions-item label="终点人物">{{ graph.characters.find(c => c.id === formRel.target_id)?.name || '待确认人物' }}</n-descriptions-item>
                 <n-descriptions-item label="关系类型">{{ formRel.label }}</n-descriptions-item>
                 <n-descriptions-item label="备注">{{ formRel.note || '无' }}</n-descriptions-item>
                 <n-descriptions-item label="有向边">{{ formRel.directed ? '是' : '否' }}</n-descriptions-item>

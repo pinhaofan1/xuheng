@@ -19,6 +19,7 @@ from domain.bible.triple import SourceType, Triple
 from domain.character.value_objects.character_id import CharacterId
 from domain.novel.value_objects.character_state import CharacterState, EmotionalArcNode
 from domain.structure.chapter_element import ElementType
+from domain.knowledge.entity_display import is_internal_entity_id
 from application.world.services.narrative_lexicon import get_narrative_lexicon
 
 logger = logging.getLogger(__name__)
@@ -172,7 +173,7 @@ class CharacterNarrativeKernel:
                     relation_type=slot.relation_type,
                     importance=slot.importance,
                     appearance_order=slot.appearance_order,
-                    notes=json.dumps(slot.notes.to_dict(), ensure_ascii=False),
+                    notes=json.dumps({**slot.notes.to_dict(), "display_name": slot.name}, ensure_ascii=False),
                 )
         return plan
 
@@ -183,11 +184,26 @@ class CharacterNarrativeKernel:
         rows = self.chapter_element_repo.get_planned_cast_sync(chapter_id)
         bible = self._get_bible(novel_id)
         by_id = {self._char_id(c): c for c in (getattr(bible, "characters", []) or [])}
+        if self.unified_character_repo:
+            try:
+                for character in self.unified_character_repo.list_by_novel(novel_id):
+                    by_id.setdefault(self._char_id(character), character)
+            except Exception as exc:
+                logger.debug("cast name lookup failed novel=%s: %s", novel_id, exc)
         slots: List[CastSlot] = []
         for row in rows:
             char_id = str(row.get("element_id") or "")
             char = by_id.get(char_id)
-            name = getattr(char, "name", "") or char_id
+            try:
+                raw_notes = json.loads(row.get("notes") or "{}")
+            except (TypeError, ValueError):
+                raw_notes = {}
+            stored_name = raw_notes.get("display_name", "") if isinstance(raw_notes, dict) else ""
+            name = getattr(char, "name", "") or stored_name
+            if not name or is_internal_entity_id(name):
+                # Legacy ephemeral slots lost their names. Do not feed opaque
+                # IDs back to writing prompts; a fresh cast plan can recover.
+                continue
             slots.append(
                 CastSlot(
                     character_id=char_id,

@@ -6,6 +6,7 @@ import threading
 import time
 from typing import Optional, List, Dict, Set, Any, Tuple, TYPE_CHECKING
 from pathlib import Path
+from domain.knowledge.entity_display import is_internal_entity_id
 
 if TYPE_CHECKING:
     from domain.knowledge.repositories.knowledge_repository import KnowledgeRepository
@@ -66,7 +67,64 @@ def _knowledge_triple_to_fact_dict(t: Any) -> dict:
         "related_chapters": list(t.related_chapters or []),
         "tags": list(t.tags or []),
         "attributes": dict(t.attributes or {}),
+        "subject_entity_id": t.subject_entity_id,
+        "object_entity_id": t.object_entity_id,
+        "source_type": t.source_type,
     }
+
+
+def character_relation_facts(facts: List[dict]) -> List[dict]:
+    """Project people and people-to-people edges, preserving the source facts."""
+    people: dict[str, dict] = {}
+
+    def readable(fact: dict, side: str) -> bool:
+        attrs = fact.get("attributes") or {}
+        value = (fact.get(side) or "").strip()
+        return bool(value) and not is_internal_entity_id(value) and attrs.get("unresolved_" + side + "_entity") not in (True, "true")
+
+    for fact in facts:
+        attrs = fact.get("attributes") or {}
+        subject_kind = attrs.get("resolved_subject_type") or fact.get("entity_type")
+        object_kind = attrs.get("resolved_object_type") or attrs.get("object_type")
+        # Old extractor rows used `character` as a blanket subject type even
+        # for sects and objects. Require a roster match, explicit endpoint
+        # types, or an author/Bible declaration before seeding such a person.
+        subject_confirmed = attrs.get("subject_name_known") == "true" or bool(attrs.get("object_type")) or fact.get("source_type") in {"manual", "bible_generated"}
+        if subject_kind == "character" and subject_confirmed and readable(fact, "subject"):
+            people.setdefault(fact["subject"], fact)
+        if object_kind == "character" and readable(fact, "object"):
+            people.setdefault(fact["object"], fact)
+        if fact.get("predicate") == "是" and fact.get("object") in CHARACTER_ROLE_KEYWORDS and readable(fact, "subject"):
+            people[fact["subject"]] = fact
+
+    relations: List[dict] = []
+    for fact in facts:
+        if not (readable(fact, "subject") and readable(fact, "object")):
+            continue
+        attrs = fact.get("attributes") or {}
+        subject_kind = attrs.get("resolved_subject_type") or fact.get("entity_type")
+        object_kind = attrs.get("resolved_object_type") or attrs.get("object_type")
+        if subject_kind and subject_kind != "character":
+            continue
+        if object_kind and object_kind != "character":
+            continue
+        predicate = (fact.get("predicate") or "").strip()
+        relationship = CastService._predicate_matches_relationship(predicate)
+        if not relationship and not (fact["subject"] in people and fact["object"] in people):
+            continue
+        if relationship:
+            people.setdefault(fact["subject"], fact)
+            people.setdefault(fact["object"], fact)
+        relations.append({**fact, "entity_type": "character"})
+
+    declarations = []
+    for name, origin in people.items():
+        role = origin.get("object") if origin.get("predicate") == "是" and origin.get("object") in CHARACTER_ROLE_KEYWORDS else "人物"
+        declarations.append({
+            "subject": name, "predicate": "是", "object": role, "entity_type": None,
+            "description": origin.get("description", ""), "note": origin.get("note", ""),
+        })
+    return declarations + relations
 
 
 class CastService:
@@ -309,6 +367,7 @@ class CastService:
         name_to_char: Dict[str, Character] = {char.name: char for char in characters}
 
         relationships = []
+        seen = set()
         rel_idx = 0
 
         for fact in facts:
@@ -329,6 +388,10 @@ class CastService:
 
             source_char = name_to_char[subject]
             target_char = name_to_char[obj]
+            key = (source_char.id.value, target_char.id.value, predicate)
+            if source_char.id == target_char.id or key in seen:
+                continue
+            seen.add(key)
 
             rel_idx += 1
             relationship = Relationship(
@@ -361,8 +424,9 @@ class CastService:
             self._store_cached_graph(novel_id, dto)
             return dto
 
-        characters = self._extract_characters_from_facts(facts)
-        relationships = self._extract_relationships_from_facts(facts, characters)
+        person_facts = character_relation_facts(facts)
+        characters = self._extract_characters_from_facts(person_facts)
+        relationships = self._extract_relationships_from_facts(person_facts, characters)
 
         cast_graph = CastGraph(
             id=f"cast_{novel_id}",

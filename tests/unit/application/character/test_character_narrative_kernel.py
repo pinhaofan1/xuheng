@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
+from types import SimpleNamespace
+from application.character.dtos.character_narrative import ChapterCastPlan, CastSlot
 
 from application.character.services.character_narrative_kernel import CharacterNarrativeKernel
 
@@ -129,3 +132,24 @@ def test_build_context_locks_maps_importance_to_tiers():
     assert "核心信念" in locks.t0
     assert "秦柔" in locks.t1
     assert "路远" in locks.t2
+
+
+def test_ephemeral_slot_retains_its_name_after_save_and_reload(monkeypatch):
+    rows = []
+    def store(**fields):
+        rows.append({"element_id": fields["character_id"], **fields})
+    repo = SimpleNamespace(upsert_cast_slot_sync=store, get_planned_cast_sync=lambda _: rows)
+    kernel = CharacterNarrativeKernel(bible_repository=_BibleRepo([]), chapter_element_repository=repo)
+    monkeypatch.setattr(kernel, "get_chapter_node_id", lambda *a: "chapter-4")
+    plan = ChapterCastPlan(novel_id="n1", chapter_number=4,
+                          slots=[CastSlot(character_id="ephemeral-4-deadbeef", name="药铺掌柜", importance="minor")])
+    kernel.apply_cast_plan(plan, create_new_characters=False)
+    assert json.loads(rows[0]["notes"])["display_name"] == "药铺掌柜"
+    assert kernel.get_cast_slots("n1", 4)[0].name == "药铺掌柜"
+
+
+def test_old_unnamed_slot_is_not_fed_back_as_a_name_to_writing(monkeypatch):
+    repo = SimpleNamespace(get_planned_cast_sync=lambda _: [{"element_id":"ephemeral-4-deadbeef", "notes":"{}"}])
+    kernel = CharacterNarrativeKernel(bible_repository=_BibleRepo([]), chapter_element_repository=repo)
+    monkeypatch.setattr(kernel, "get_chapter_node_id", lambda *a: "chapter-4")
+    assert kernel.get_cast_slots("n1", 4) == []

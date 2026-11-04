@@ -55,6 +55,9 @@ const handleRefresh = () => {
 
 .graph-container {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   padding: 16px;
 }

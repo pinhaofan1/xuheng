@@ -26,6 +26,7 @@ interface GraphLink {
   source: string
   target: string
   value?: number
+  label?: { formatter?: string }
 }
 
 interface GraphEventParams {
@@ -94,7 +95,9 @@ const tooltip = computed(() => ({
       return `${(eventParams.data as GraphNode)?.name ?? ''}`
     }
     const link = eventParams.data as GraphLink | undefined
-    return `${link?.source ?? ''} → ${link?.target ?? ''}`
+    const source = props.nodes.find(node => node.id === link?.source)?.name || '待确认实体'
+    const target = props.nodes.find(node => node.id === link?.target)?.name || '待确认实体'
+    return `${source} → ${target}`
   },
 }))
 
@@ -116,6 +119,7 @@ const chartOption = computed(() => {
         links: props.links,
         categories: props.categories.map(name => ({ name })),
         roam: true,
+        labelLayout: { hideOverlap: true },
         label: {
           show: true,
           position: 'right',

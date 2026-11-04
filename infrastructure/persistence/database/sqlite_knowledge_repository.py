@@ -12,6 +12,7 @@ from domain.knowledge.chapter_summary import ChapterSummary
 from domain.knowledge.knowledge_triple import KnowledgeTriple
 from infrastructure.persistence.database.connection import DatabaseConnection
 from infrastructure.persistence.database.sqlite_write_settings import get_sqlite_write_settings
+from infrastructure.persistence.database.entity_display_labels import EntityDisplayLabels
 
 logger = logging.getLogger(__name__)
 
@@ -218,15 +219,17 @@ class SqliteKnowledgeRepository:
             return []
         more, tags, attrs = self._load_triple_children(novel_id_str)
         prov_by_triple = self._load_provenance_grouped(novel_id_str)
+        labels = EntityDisplayLabels(self.db, novel_id_str)
         facts: List[KnowledgeTriple] = []
         for row in triples_rows:
             tid = row["id"]
+            display = labels.normalize({**dict(row), "attributes": dict(attrs.get(tid, {}))})
             facts.append(
                 KnowledgeTriple(
                     id=tid,
-                    subject=row["subject"],
+                    subject=display["subject"],
                     predicate=row["predicate"],
-                    object=row["object"],
+                    object=display["object"],
                     chapter_id=row["chapter_number"],
                     note=row["note"] or "",
                     entity_type=row.get("entity_type"),
@@ -236,11 +239,11 @@ class SqliteKnowledgeRepository:
                     first_appearance=row.get("first_appearance"),
                     related_chapters=list(more.get(tid, [])),
                     tags=tags.get(tid, []),
-                    attributes=dict(attrs.get(tid, {})),
+                    attributes=display["attributes"],
                     confidence=row["confidence"] if row.get("confidence") is not None else None,
                     source_type=row.get("source_type"),
-                    subject_entity_id=row.get("subject_entity_id"),
-                    object_entity_id=row.get("object_entity_id"),
+                    subject_entity_id=display.get("subject_entity_id"),
+                    object_entity_id=display.get("object_entity_id"),
                     provenance=list(prov_by_triple.get(tid, [])),
                     is_starred=bool(row["is_starred"]) if row.get("is_starred") is not None else False,
                 )
@@ -445,6 +448,7 @@ class SqliteKnowledgeRepository:
         provenance_mode: str = "skip",
     ) -> None:
         now = datetime.utcnow().isoformat()
+        triple = EntityDisplayLabels(self.db, novel_id).normalize(triple)
         with self.db.transaction() as exe:
             self._insert_triple_row(exe, novel_id, triple, now)
             if provenance_rows and provenance_mode == "replace":
@@ -479,11 +483,12 @@ class SqliteKnowledgeRepository:
             return
 
         write_settings = get_sqlite_write_settings()
+        labels = EntityDisplayLabels(self.db, novel_id)
         for i in range(0, total, batch_size):
             batch = triples[i:i + batch_size]
             with self.db.transaction() as exe:
                 for triple in batch:
-                    self._insert_triple_row(exe, novel_id, triple, now)
+                    self._insert_triple_row(exe, novel_id, labels.normalize(triple), now)
                     if provenance_rows_map:
                         rows = provenance_rows_map.get(triple["id"])
                         if rows:
@@ -718,6 +723,7 @@ class SqliteKnowledgeRepository:
         novel_id = knowledge.novel_id
         knowledge_id = f"{novel_id}-knowledge"
         now = datetime.utcnow().isoformat()
+        labels = EntityDisplayLabels(self.db, novel_id)
 
         with self.db.transaction() as conn:
             conn.execute(
@@ -754,7 +760,7 @@ class SqliteKnowledgeRepository:
                     "subject_entity_id": getattr(fact, "subject_entity_id", None),
                     "object_entity_id": getattr(fact, "object_entity_id", None),
                 }
-                self._insert_triple_row(conn, novel_id, d, now)
+                self._insert_triple_row(conn, novel_id, labels.normalize(d), now)
 
             import json as _json
             conn.execute("DELETE FROM chapter_summaries WHERE knowledge_id = ?", (knowledge_id,))
@@ -799,6 +805,7 @@ class SqliteKnowledgeRepository:
         logger.info("Saved StoryKnowledge for novel: %s", novel_id)
 
     def save_all(self, novel_id: str, data: dict) -> None:
+        labels = EntityDisplayLabels(self.db, novel_id)
         logger.info("save_all called for %s, facts count: %s", novel_id, len(data.get("facts", [])))
         knowledge_id = f"{novel_id}-knowledge"
         now = datetime.utcnow().isoformat()
@@ -821,7 +828,7 @@ class SqliteKnowledgeRepository:
 
             for triple in raw_facts:
                 self._insert_triple_row(
-                    conn, novel_id, self._sanitize_fact_dict_for_write(triple), now
+                    conn, novel_id, labels.normalize(self._sanitize_fact_dict_for_write(triple)), now
                 )
 
             conn.execute("DELETE FROM chapter_summaries WHERE knowledge_id = ?", (knowledge_id,))

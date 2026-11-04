@@ -65,8 +65,9 @@ def _triple_to_fact_dict(triple: Triple) -> dict:
     subject_location_type = attrs.pop("subject_location_type", None)
     # object_importance / object_location_type 保留在 attributes 供前端补全客体节点
 
-    if triple.subject_type != triple.object_type:
-        attrs["object_type"] = triple.object_type
+    # Explicit endpoint types stop character->location/prop facts becoming
+    # character relations when read by visualizations.
+    attrs["object_type"] = triple.object_type
     if triple.source_chapter_id and not str(triple.source_chapter_id).isdigit():
         attrs["source_story_node_id"] = str(triple.source_chapter_id)
     non_numeric = [str(x) for x in (triple.related_chapters or []) if not str(x).isdigit()]
