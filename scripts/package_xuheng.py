@@ -10,7 +10,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = {".github", "application", "audit", "config", "domain", "engine", "frontend",
                "infrastructure", "interfaces", "project_docs", "scripts", "shared", "tests"}
-SOURCE_FILES = {".env.example", ".gitignore", ".gitattributes", "LICENSE", "NOTICE.md", "CONTRIBUTORS.md", "README.md",
+SOURCE_FILES = {".env.example", ".gitignore", ".gitattributes", "AGENTS.md", "LICENSE", "NOTICE.md", "CONTRIBUTORS.md", "README.md",
                 "README_LOGGING.md", "VERSION", "pyproject.toml", "pytest.ini", "load_env.py",
                 "cli.py", "__init__.py", "__main__.py", "requirements.txt",
                 "requirements-tested.txt", "requirements-local.txt", "start-xuheng.ps1", "start-xuheng.cmd"}

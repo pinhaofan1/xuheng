@@ -1,0 +1,326 @@
+{
+  "version": "0.6.0",
+  "updated_at": "2026-11-05",
+  "next_order": ["F04", "F02", "F03", "F01", "F08", "F09", "F06", "F07", "F10", "F11", "F05", "F12", "F13", "F14", "F15"],
+  "baseline": {
+    "unit_passed": 1700,
+    "unit_skipped": 7,
+    "browser_passed": 11,
+    "evidence": "project_docs/RELEASE_0.6.md"
+  },
+  "items": [
+    {
+      "id": "B01",
+      "group": "delivered",
+      "priority": "—",
+      "title": "作品管理与章节编辑",
+      "status": "done",
+      "acceptance": "新建作品、编辑、保存、重读正文及章节导航通过浏览器验证。",
+      "evidence": [
+        "frontend/e2e/workspace-navigation.spec.ts"
+      ],
+      "completed_at": "2026-11-04"
+    },
+    {
+      "id": "B02",
+      "group": "delivered",
+      "priority": "—",
+      "title": "人物设定与关系图基础",
+      "status": "done",
+      "acceptance": "按作品解析人物姓名，过滤未知内部编号与非人物节点；新书及新人物存取回归通过。",
+      "evidence": [
+        "project_docs/RELEASE_0.4.md",
+        "frontend/e2e/character-graph.spec.ts"
+      ],
+      "completed_at": "2026-11-05"
+    },
+    {
+      "id": "B03",
+      "group": "delivered",
+      "priority": "—",
+      "title": "规则审校、证据反馈与报告",
+      "status": "done",
+      "acceptance": "规则及 AI 审校、引用核对、反馈保存、过期检测、历史记录和报告导出通过对应测试。",
+      "evidence": [
+        "frontend/e2e/evidence-review.spec.ts",
+        "frontend/e2e/ai-evidence-review.spec.ts"
+      ],
+      "completed_at": "2026-11-04"
+    },
+    {
+      "id": "B04",
+      "group": "delivered",
+      "priority": "—",
+      "title": "Embedding、Reranker 与混合检索",
+      "status": "done",
+      "acceptance": "已有范围内完成真实模型联调和跨书隔离验证；当前范围仍为最近 100 章、50 万字符。",
+      "evidence": [
+        "project_docs/RELEASE_0.4.md"
+      ],
+      "completed_at": "2026-11-04"
+    },
+    {
+      "id": "B05",
+      "group": "delivered",
+      "priority": "—",
+      "title": "规划及基础托管写作链路",
+      "status": "done",
+      "acceptance": "执行进程真实启动，宏观规划、首幕规划、首章保存及保护章数停止已有验证；长期验证另列 F01。",
+      "evidence": [
+        "project_docs/RELEASE_0.4.md"
+      ],
+      "completed_at": "2026-11-04"
+    },
+    {
+      "id": "B06",
+      "group": "delivered",
+      "priority": "—",
+      "title": "审校任务持久化与手动恢复",
+      "status": "done",
+      "acceptance": "重启识别中断，恢复已保存结果，取消与重新发起保留历史且重复提交不重复建子任务。",
+      "evidence": [
+        "project_docs/RELEASE_0.5.md"
+      ],
+      "completed_at": "2026-11-05"
+    },
+    {
+      "id": "B07",
+      "group": "delivered",
+      "priority": "—",
+      "title": "作品用量与请求前预算",
+      "status": "done",
+      "acceptance": "累计请求、Token、费用估算及并发原子预留通过验证；缺失用量和单价明确标注。",
+      "evidence": [
+        "project_docs/RELEASE_0.5.md"
+      ],
+      "completed_at": "2026-11-05"
+    },
+    {
+      "id": "B08",
+      "group": "delivered",
+      "priority": "—",
+      "title": "正文保存确认与生成稿取回",
+      "status": "done",
+      "acceptance": "正文完全读回后才确认保存；写入失败时保留副本，下载不覆盖当前正文且遵守作品边界。",
+      "evidence": [
+        "project_docs/RELEASE_0.6.md"
+      ],
+      "completed_at": "2026-11-05"
+    },
+    {
+      "id": "B09",
+      "group": "delivered",
+      "priority": "—",
+      "title": "托管检查点与失败停止",
+      "status": "done",
+      "acceptance": "恢复已保存章节的审计，按正文版本复用步骤；故障注入、子进程退出和三章离线流程通过。",
+      "evidence": [
+        "project_docs/RELEASE_0.6.md"
+      ],
+      "completed_at": "2026-11-05"
+    },
+    {
+      "id": "B10",
+      "group": "delivered",
+      "priority": "—",
+      "title": "工作台入口与加载错误恢复",
+      "status": "done",
+      "acceptance": "写作支撑面板正常打开；资源加载失败有恢复入口，保留未保存内容；正文统计以数据库为准。",
+      "evidence": [
+        "project_docs/RELEASE_0.4.md",
+        "project_docs/RELEASE_0.5.md"
+      ],
+      "completed_at": "2026-11-05"
+    },
+    {
+      "id": "B11",
+      "group": "delivered",
+      "priority": "—",
+      "title": "开发进度表与自动勾选流程",
+      "status": "done",
+      "acceptance": "单一数据源生成进度表，完成勾选须有验收依据；CI 检查表格一致，跨轮维护规则写入仓库。",
+      "evidence": [
+        "scripts/sync_progress.py",
+        ".github/workflows/xuheng-ci.yml"
+      ],
+      "completed_at": "2026-11-05"
+    },
+    {
+      "id": "F01",
+      "group": "next",
+      "priority": "P0",
+      "title": "真实模型完整多章托管验收",
+      "status": "todo",
+      "kind": "verification",
+      "acceptance": "隔离作品在明确预算内连续至少 10 章并跨幕，包含完整规划和章后模型调用；暂停、限流、断网、重启及章数/预算停止留存报告。",
+      "evidence": []
+    },
+    {
+      "id": "F02",
+      "group": "next",
+      "priority": "P0",
+      "title": "章后辅助任务持久化与幂等",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "辅助任务重启可继续；同一正文版本重复恢复不重复写图谱、伏笔或债务；未知计费请求需要确认后处理。",
+      "evidence": []
+    },
+    {
+      "id": "F03",
+      "group": "next",
+      "priority": "P0",
+      "title": "联合备份与恢复",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "主库和运行记录库形成一致备份；提供恢复入口，并通过备份还原、损坏副本和版本兼容检查。",
+      "evidence": []
+    },
+    {
+      "id": "F04",
+      "group": "next",
+      "priority": "P0",
+      "title": "流式请求真实用量结算",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "接收 OpenAI 兼容流的 usage 并精确结算；缺失用量、取消和断流继续保留明确的未知/预留状态。",
+      "evidence": []
+    },
+    {
+      "id": "F05",
+      "group": "next",
+      "priority": "P1",
+      "title": "真实长篇评测集与质量报告",
+      "status": "todo",
+      "kind": "verification",
+      "acceptance": "公开可用文本、独立人工标注及固定评测划分；报告误报、漏报和引用正确率，保留错误案例。需独立标注参与。",
+      "evidence": []
+    },
+    {
+      "id": "F06",
+      "group": "next",
+      "priority": "P1",
+      "title": "人物事实同步与冲突处理",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "设定、正文提取与审校事实之间有明确同步策略；冲突展示来源，由作者确认，支持回退。",
+      "evidence": []
+    },
+    {
+      "id": "F07",
+      "group": "next",
+      "priority": "P1",
+      "title": "同名人物消歧、合并与重命名",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "同书同名和别名人物可区分、预览合并及重命名；关系、引用和事实同步，跨书不串联。",
+      "evidence": []
+    },
+    {
+      "id": "F08",
+      "group": "next",
+      "priority": "P1",
+      "title": "后台增量索引与删除清理",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "章节新增、修改、删除只更新受影响索引；可查看进度、取消及恢复，旧向量与缓存不残留。",
+      "evidence": []
+    },
+    {
+      "id": "F09",
+      "group": "next",
+      "priority": "P1",
+      "title": "超长篇分层历史召回",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "在超过 100 章、50 万字符的作品上验证历史召回；结合全文与摘要，引用仍可定位到原文，记录性能与成本。",
+      "evidence": []
+    },
+    {
+      "id": "F10",
+      "group": "next",
+      "priority": "P1",
+      "title": "按日预算与费用汇总",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "按明确时区统计日用量，支持日上限、按模型/服务汇总和跨日边界，并保持并发预算检查。",
+      "evidence": []
+    },
+    {
+      "id": "F11",
+      "group": "next",
+      "priority": "P1",
+      "title": "未知用量确认与账单核对",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "可核对服务商用量，确认未知记录并调整预留；保留原记录与调整依据，显示差异。",
+      "evidence": []
+    },
+    {
+      "id": "F12",
+      "group": "next",
+      "priority": "P2",
+      "title": "长章节与大图谱交互优化",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "长正文编辑、节点筛选/定位与关系展开可用；在固定设备及规模下记录响应性能，补齐窄屏检查。",
+      "evidence": []
+    },
+    {
+      "id": "F13",
+      "group": "next",
+      "priority": "P2",
+      "title": "首次使用引导与完整示例",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "新用户从导入示例、配置模型到编辑、审校、查看报告有连贯入口；配置缺失和失败均有清晰下一步。",
+      "evidence": []
+    },
+    {
+      "id": "F14",
+      "group": "next",
+      "priority": "P2",
+      "title": "跨平台 CI 与发布一致性",
+      "status": "todo",
+      "kind": "verification",
+      "acceptance": "Windows/Linux 的后端、构建和浏览器检查有 CI 结果；版本号、文档和交付包一致，干净环境可复现。",
+      "evidence": []
+    },
+    {
+      "id": "F15",
+      "group": "next",
+      "priority": "P2",
+      "title": "多进程任务协调",
+      "status": "todo",
+      "kind": "feature",
+      "acceptance": "任务领取、租约、心跳与恢复支持多个执行进程；进程竞争和退出不造成重复执行或重复计费。",
+      "evidence": []
+    },
+    {
+      "id": "X01",
+      "group": "optional",
+      "priority": "按需",
+      "title": "独立 Windows 安装包",
+      "status": "optional",
+      "acceptance": "完成 Rust/MSVC/Tauri 构建、安装卸载和首次启动验证，目标机器无需另装 Python；明确签名与更新方式。",
+      "evidence": []
+    },
+    {
+      "id": "X02",
+      "group": "optional",
+      "priority": "按需",
+      "title": "公网多用户服务",
+      "status": "optional",
+      "acceptance": "账户、作品权限、密钥隔离、后台队列、备份与部署监控通过验证；以多进程协调为前置。",
+      "evidence": []
+    },
+    {
+      "id": "X03",
+      "group": "optional",
+      "priority": "按需",
+      "title": "自建在线社区",
+      "status": "optional",
+      "acceptance": "作品分享、权限、内容管理及自有社区后端形成闭环；按实际发布需求启动。",
+      "evidence": []
+    }
+  ]
+}

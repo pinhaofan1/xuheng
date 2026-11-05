@@ -57,7 +57,7 @@ cd ..
 - [0.6.0 交付记录](project_docs/RELEASE_0.6.md)
 - [架构与 API](project_docs/ARCHITECTURE.md)
 - [验证记录](project_docs/VALIDATION.md)
-- [后续完善清单](project_docs/ROADMAP.md)
+- [开发进度表与待办清单](project_docs/ROADMAP.md)
 - [模块与来源](project_docs/CONTRIBUTIONS.md)
 
 ## 许可
