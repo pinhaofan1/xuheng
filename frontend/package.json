@@ -2,7 +2,7 @@
   "name": "xuheng",
   "private": true,
   "description": "叙衡 · AI 创作与一致性审校工作台（来源与许可见仓库声明）",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
     "sync:taxonomy": "node scripts/sync-builtin-taxonomy.mjs",

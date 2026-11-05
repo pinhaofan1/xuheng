@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "updated_at": "2026-11-05",
   "next_order": [
     "F04",
@@ -19,10 +19,10 @@
     "F15"
   ],
   "baseline": {
-    "unit_passed": 1727,
+    "unit_passed": 1762,
     "unit_skipped": 7,
-    "browser_passed": 11,
-    "evidence": "project_docs/RELEASE_0.7.md"
+    "browser_passed": 13,
+    "evidence": "project_docs/RELEASE_0.8.md"
   },
   "items": [
     {
@@ -259,20 +259,26 @@
       "group": "next",
       "priority": "P1",
       "title": "按日预算与费用汇总",
-      "status": "todo",
+      "status": "done",
       "kind": "feature",
       "acceptance": "按明确时区统计日用量，支持日上限、按模型/服务汇总和跨日边界，并保持并发预算检查。",
-      "evidence": []
+      "evidence": [
+        "project_docs/RELEASE_0.8.md"
+      ],
+      "completed_at": "2026-11-05"
     },
     {
       "id": "F11",
       "group": "next",
       "priority": "P1",
       "title": "未知用量确认与账单核对",
-      "status": "todo",
+      "status": "done",
       "kind": "feature",
       "acceptance": "可核对服务商用量，确认未知记录并调整预留；保留原记录与调整依据，显示差异。",
-      "evidence": []
+      "evidence": [
+        "project_docs/RELEASE_0.8.md"
+      ],
+      "completed_at": "2026-11-05"
     },
     {
       "id": "F12",

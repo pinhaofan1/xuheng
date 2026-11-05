@@ -30,6 +30,8 @@ flowchart LR
 | `application/audit/services/review_jobs.py` | 有界线程任务、活动去重、进度与取消 |
 | `infrastructure/ai/evidence_model_client.py` | 兼容 Chat Completions、输出预算、用量与错误脱敏 |
 | `infrastructure/persistence/database/evidence_review_store.py` | 关系数据、快照、索引、反馈、写入确认 |
+| `infrastructure/persistence/operation_journal.py` | 独立运行账本、原子预留、累计及按日预算检查 |
+| `infrastructure/persistence/usage_ledger.py` | IANA 时区日期边界、模型汇总、追加式账单核对与差额 |
 | `interfaces/api/v1/audit/evidence_review_routes.py` | 审校、检索、模型状态、任务、历史、导出 API |
 | `frontend/src/views/EvidenceReview.vue` | 核对、检索、轮询、原文高亮、反馈与导出 |
 
@@ -51,7 +53,7 @@ flowchart LR
 
 写入复用 `DatabaseConnection.transaction()` 和单写者队列，读回本次运行或版本 token 后才确认，最多等待 4 秒，未确认返回 503。迟到写入仍可能完成，客户端需刷新。新增表包括 `xh_rule_*`、`xh_review_*`、`xh_feedback_events`、`xh_history_*` 和 `xh_embedding_cache`；向量数组是技术索引 JSON。
 
-任务容量为 2，同章活动请求复用，内存最多保留 80 条任务。页面刷新恢复活动进度及最近结果；完成结果落盘，在途线程任务重启不恢复。取消在调用前后检查，不能承诺中止已被服务商接收的付费请求。没有引入 Celery / Redis 或多租户身份体系，按本机工具交付。
+任务容量为 2，同章活动请求复用，记录在独立运行库持久化。页面刷新恢复进度及最近结果；重启将未完成任务标记中断，已保存结果可恢复关联，不自动重复请求模型。取消不能承诺免除服务商已接收请求的费用。没有引入 Celery / Redis 或多租户身份体系，按本机工具交付。
 
 ## API
 
@@ -72,5 +74,11 @@ flowchart LR
 | GET | `/{novel}/runs/{run}/export` | JSON 下载 |
 | PATCH | `/{novel}/runs/{run}/issues/{issue}` | 状态与 expected_version |
 | GET | `/model/status` | 非密钥状态 |
+| GET | `/{novel}/operations?day=YYYY-MM-DD&offset=0&uncertain_only=false` | 累计及每日统计、按模型汇总、请求分页；省略日期取所选时区今天 |
+| PUT | `/{novel}/operations/policy` | 累计/每日限额、IANA 时区及模型单价 |
+| GET | `/{novel}/operations/calls/{call}/reconciliations` | 作品范围内请求的全部核对历史 |
+| POST | `/{novel}/operations/calls/{call}/reconciliations` | 按 request_key 幂等追加核对，expected_revision 防止覆盖新版本 |
 
 404 为作品边界内未找到，409 为输入或反馈冲突，422 为不支持输入，503 为不可用或写入未确认。
+
+运行记录库通过 `usage_calls` 视图合并原请求与最新核对；`calls` 保留原请求，`call_adjustments` 追加前后快照、依据和差额。累计、每日与模型汇总、请求前检查均读取同一有效视图。预留和核对使用 `BEGIN IMMEDIATE`，统计使用同一读事务。未知金额与用量不转成零；核对可明确填写零值。每日窗口以 IANA 时区的相邻两个本地零点换算 UTC，覆盖夏令时；请求以发起日归属，日限额拦截附有到期时间，不自动恢复任务。当前为单个本地 API 进程；本轮只串行化本进程的账本初始化，不提供多执行进程任务协调。

@@ -67,6 +67,9 @@ def main():
     from infrastructure.persistence.operation_journal import get_operation_journal, now
     from application.audit.evidence_models import text_hash
     journal = get_operation_journal()
+    pending_call = journal.reserve("ai-browser-fixture", "llm", "fixture-ledger-only", 120, 80,
+                                   operation="浏览器测试：待核对账单")
+    journal.finish(pending_call, status="failed")
     journal.save_job({"id":"fixture-interrupted", "novel_id":"ai-browser-fixture", "number":2,
         "status":"running", "stage":"等待模型", "created_at":now(), "updated_at":now(),
         "run_id":None, "error":"", "cancel_requested":False},

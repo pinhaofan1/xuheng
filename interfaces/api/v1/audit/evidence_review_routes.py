@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from application.audit.evidence_models import AIReviewRequest, FeedbackRequest, HistorySearchRequest, RuleSet, RunReviewRequest, text_hash
@@ -177,9 +177,15 @@ class UsagePolicy(BaseModel):
     max_tokens: int | None = Field(default=None, ge=0, le=1_000_000_000_000)
     max_cost: float | None = Field(default=None, ge=0, le=1_000_000)
     prices: list[ModelPrice] = Field(default_factory=list, max_length=100)
+    timezone: str = Field(default="Asia/Shanghai", max_length=80)
+    daily_max_calls: int | None = Field(default=None, ge=0, le=10_000_000, strict=True)
+    daily_max_tokens: int | None = Field(default=None, ge=0, le=1_000_000_000_000, strict=True)
+    daily_max_cost: float | None = Field(default=None, ge=0, le=1_000_000, strict=True)
 
     @model_validator(mode="after")
     def unique_prices(self):
+        from infrastructure.persistence.usage_ledger import validate_timezone
+        validate_timezone(self.timezone)
         keys = [(p.kind,p.model) for p in self.prices]
         if len(keys) != len(set(keys)):
             raise ValueError("同一模型的单价不能重复")
@@ -187,12 +193,14 @@ class UsagePolicy(BaseModel):
 
 
 @router.get("/{novel_id}/operations")
-def operations(novel_id: str, service: EvidenceReviewService = Depends(get_evidence_review_service)):
+def operations(novel_id: str, day: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+               offset: int = Query(default=0, ge=0, le=1_000_000_000), uncertain_only: bool = False,
+               service: EvidenceReviewService = Depends(get_evidence_review_service)):
     from application.audit.services.review_jobs import get_review_jobs
     from infrastructure.persistence.operation_journal import get_operation_journal
     def operation():
         service.store.require_novel(novel_id)
-        result = get_operation_journal().summary(novel_id)
+        result = get_operation_journal().summary(novel_id, day, offset, uncertain_only)
         result["jobs"] = get_review_jobs().history(novel_id)
         rows = get_operation_journal().chapter_progress(novel_id)
         current = {}
@@ -206,6 +214,65 @@ def operations(novel_id: str, service: EvidenceReviewService = Depends(get_evide
             row["uncommitted"] = row["stage"] == "saving" and row["stale"] and row["draft_available"]
         result["chapter_progress"] = rows
         return result
+    return _call(operation)
+
+
+class ReconcileUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, str_strip_whitespace=True)
+    input_tokens: int = Field(ge=0, le=1_000_000_000_000, strict=True)
+    output_tokens: int = Field(ge=0, le=1_000_000_000_000, strict=True)
+    billed_cost: float | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    expected_revision: int = Field(ge=0, strict=True)
+    request_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
+    note: str = Field(min_length=1, max_length=1000)
+    reference: str = Field(default="", max_length=240)
+    request_finished: bool = Field(strict=True)
+
+    @model_validator(mode="after")
+    def confirmed_finished(self):
+        if not self.request_finished:
+            raise ValueError("请先确认已在服务商核实此请求结束")
+        return self
+
+
+@router.get("/{novel_id}/operations/calls/{call_id}/reconciliations")
+def usage_reconciliation_history(novel_id: str, call_id: str,
+                                 service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    from infrastructure.persistence.operation_journal import get_operation_journal
+    def operation():
+        service.store.require_novel(novel_id)
+        try:
+            return get_operation_journal().reconciliation_history(novel_id, call_id)
+        except KeyError as exc:
+            raise ReviewNotFound("未找到该作品的请求记录") from exc
+    return _call(operation)
+
+
+@router.post("/{novel_id}/operations/calls/{call_id}/reconciliations")
+def reconcile_usage(novel_id: str, call_id: str, request: ReconcileUsage,
+                    service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    from infrastructure.persistence.operation_journal import get_operation_journal, now
+    from infrastructure.persistence.usage_ledger import ReconciliationConflict
+    def operation():
+        service.store.require_novel(novel_id)
+        journal = get_operation_journal()
+        with journal.connection() as conn:
+            original = conn.execute("SELECT status FROM calls WHERE novel_id=? AND id=?", (novel_id, call_id)).fetchone()
+            repeated = conn.execute("SELECT id FROM call_adjustments WHERE novel_id=? AND request_key=?", (novel_id, request.request_key)).fetchone()
+        if original is None:
+            raise ReviewNotFound("未找到该作品的请求记录")
+        if original["status"] == "running" and not repeated:
+            novel = service.store.db.fetch_one("SELECT autopilot_status FROM novels WHERE id=?", (novel_id,))
+            generating = service.store.db.fetch_one("SELECT id FROM ai_invocation_sessions WHERE status='generating' AND json_extract(context_json,'$.novel_id')=? LIMIT 1", (novel_id,))
+            active_jobs = any(job["status"] in {"queued", "running"} for job in journal.jobs(novel_id))
+            if novel["autopilot_status"] == "running" or generating or active_jobs:
+                raise ReviewConflict("此作品仍有任务执行，请先停止并确认服务商请求结束后再核对")
+        try:
+            return journal.reconcile(novel_id, call_id, request.model_dump(), now())
+        except ReconciliationConflict as exc:
+            raise ReviewConflict(str(exc)) from exc
+        except KeyError as exc:
+            raise ReviewNotFound("未找到该作品的请求记录") from exc
     return _call(operation)
 
 

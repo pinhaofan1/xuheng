@@ -12,22 +12,30 @@ from functools import lru_cache
 import json
 from pathlib import Path
 import sqlite3
+from threading import Lock
 from uuid import uuid4
+from infrastructure.persistence.usage_ledger import DEFAULT_POLICY, UsageLedger, create_ledger_schema, day_window, validate_timezone
+
+_schema_lock = Lock()
 
 
 class BudgetExceeded(ValueError):
-    pass
+    def __init__(self, message, expires_at=None):
+        super().__init__(message)
+        self.expires_at = expires_at
 
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
-class OperationJournal:
+class OperationJournal(UsageLedger):
     def __init__(self, path):
         self.path = str(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with self.connection() as conn:
+        # WAL mode changes can return SQLITE_BUSY before SQLite's normal busy
+        # timeout applies. Serialize local initializers, not request execution.
+        with _schema_lock, self.connection() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS policies(novel_id TEXT PRIMARY KEY, body TEXT NOT NULL);
@@ -56,6 +64,7 @@ class OperationJournal:
                     PRIMARY KEY(novel_id,number,content_hash,step)
                 );
             """)
+            create_ledger_schema(conn)
 
     @contextmanager
     def connection(self):
@@ -77,9 +86,13 @@ class OperationJournal:
     @staticmethod
     def _policy(conn, novel_id):
         row = conn.execute("SELECT body FROM policies WHERE novel_id=?", (novel_id,)).fetchone()
-        return json.loads(row[0]) if row else {"max_calls": None, "max_tokens": None, "max_cost": None, "prices": []}
+        body = {**DEFAULT_POLICY, **(json.loads(row[0]) if row else {})}
+        body["prices"] = list(body["prices"])
+        return body
 
     def save_policy(self, novel_id, body):
+        body = {**DEFAULT_POLICY, **body}
+        validate_timezone(body["timezone"])
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute("INSERT OR REPLACE INTO policies VALUES (?,?)", (novel_id, json.dumps(body, allow_nan=False)))
@@ -97,29 +110,17 @@ class OperationJournal:
                                  (reserve,cost,json.dumps(price),row["id"]))
         return body
 
-    @staticmethod
-    def _totals(conn, novel_id):
-        row = conn.execute("""SELECT count(*) AS calls,
-            coalesce(sum(coalesce(input_tokens,0)),0) AS input_tokens,
-            coalesce(sum(coalesce(output_tokens,0)),0) AS output_tokens,
-            coalesce(sum(CASE WHEN input_tokens IS NULL OR output_tokens IS NULL THEN reserved_tokens ELSE input_tokens+output_tokens END),0) AS charged_tokens,
-            coalesce(sum(coalesce(cost,reserved_cost,0)),0) AS estimated_cost,
-            coalesce(sum(CASE WHEN input_tokens IS NULL OR output_tokens IS NULL THEN 1 ELSE 0 END),0) AS uncertain_calls,
-            coalesce(sum(CASE WHEN reserved_cost IS NULL THEN 1 ELSE 0 END),0) AS unknown_cost_calls
-            FROM calls WHERE novel_id=?""", (novel_id,)).fetchone()
-        return dict(row)
-
     def reserve(self, novel_id, kind, model, input_bound, output_bound, operation=""):
         try:
             return self._reserve(novel_id,kind,model,input_bound,output_bound,operation)
         except BudgetExceeded as exc:
             with self.connection() as conn:
-                conn.execute("INSERT OR REPLACE INTO budget_blocks VALUES (?,?,?)",(novel_id,str(exc),now()))
+                conn.execute("INSERT OR REPLACE INTO budget_blocks(novel_id,message,created_at,expires_at) VALUES (?,?,?,?)",(novel_id,str(exc),now(),exc.expires_at))
             raise
 
     def budget_block(self, novel_id):
         with self.connection() as conn:
-            row = conn.execute("SELECT message,created_at FROM budget_blocks WHERE novel_id=?",(novel_id,)).fetchone()
+            row = conn.execute("SELECT message,created_at,expires_at FROM budget_blocks WHERE novel_id=? AND (expires_at IS NULL OR expires_at>?)",(novel_id,now())).fetchone()
             return dict(row) if row else None
 
     def _reserve(self, novel_id, kind, model, input_bound, output_bound, operation=""):
@@ -128,18 +129,28 @@ class OperationJournal:
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             policy = self._policy(conn, novel_id)
+            stamp = now()
+            window = day_window(policy["timezone"], stamp)
             totals = self._totals(conn, novel_id)
+            daily = self._totals(conn, novel_id, window)
             price = next((p for p in policy["prices"] if p["kind"] == kind and p["model"] == model), None)
             cost = (input_bound * price["input_per_million"] + output_bound * price["output_per_million"]) / 1_000_000 if price else None
             if policy["max_cost"] is not None and (cost is None or totals["unknown_cost_calls"]):
                 raise BudgetExceeded("已设置金额预算，但有模型未配置单价或历史请求费用未知；请补充单价，或改用请求数/Token 上限")
+            if policy["daily_max_cost"] is not None and (cost is None or daily["unknown_cost_calls"]):
+                raise BudgetExceeded("已设置每日金额预算，但当日有模型未配置单价或费用未知；请补充单价或核对账单", window["end"])
             checks = [(policy["max_calls"], totals["calls"] + 1, "请求次数"),
                       (policy["max_tokens"], totals["charged_tokens"] + input_bound + output_bound, "Token"),
                       (policy["max_cost"], totals["estimated_cost"] + (cost or 0), "金额")]
             for limit, projected, label in checks:
                 if limit is not None and projected > limit:
                     raise BudgetExceeded(f"本次请求将超过作品{label}预算，已在发送前停止；请在任务与用量中调整预算")
-            stamp = now()
+            daily_checks = [(policy["daily_max_calls"], daily["calls"]+1, "请求次数"),
+                            (policy["daily_max_tokens"], daily["charged_tokens"]+input_bound+output_bound, "Token"),
+                            (policy["daily_max_cost"], daily["estimated_cost"]+(cost or 0), "金额")]
+            for limit, projected, label in daily_checks:
+                if limit is not None and projected > limit:
+                    raise BudgetExceeded(f"本次请求将超过作品每日{label}预算，已在发送前停止；按 {policy['timezone']} 零点重置，恢复任务需要手动操作", window["end"])
             conn.execute("INSERT INTO calls(id,novel_id,kind,model,status,created_at,updated_at,reserved_tokens,reserved_cost,operation,prices_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                          (request_id, novel_id, kind, model, "running", stamp, stamp, input_bound+output_bound, cost, operation, json.dumps(price) if price else None))
         return request_id
@@ -159,14 +170,21 @@ class OperationJournal:
             conn.execute("UPDATE calls SET status=?,updated_at=?,input_tokens=?,output_tokens=?,cost=?,error=? WHERE id=?",
                          (status, now(), input_tokens, output_tokens, cost, error, request_id))
 
-    def summary(self, novel_id):
+    def summary(self, novel_id, day=None, offset=0, uncertain_only=False):
         with self.connection() as conn:
-            rows = [dict(row) for row in conn.execute("SELECT * FROM calls WHERE novel_id=? ORDER BY created_at DESC LIMIT 100", (novel_id,))]
+            conn.execute("BEGIN")
+            policy = self._policy(conn, novel_id)
+            stamp = now()
+            where = "novel_id=?" + (" AND (input_tokens IS NULL OR output_tokens IS NULL OR (cost IS NULL AND reserved_cost IS NULL))" if uncertain_only else "")
+            count = conn.execute("SELECT count(*) FROM usage_calls WHERE " + where, (novel_id,)).fetchone()[0]
+            rows = [dict(row) for row in conn.execute("SELECT * FROM usage_calls WHERE " + where + " ORDER BY created_at DESC,id DESC LIMIT 100 OFFSET ?", (novel_id, offset))]
             for row in rows:
                 row.pop("error", None)  # Internal snapshots are never product copy.
                 row.pop("prices_json", None)
-            block=conn.execute("SELECT message,created_at FROM budget_blocks WHERE novel_id=?",(novel_id,)).fetchone()
-            return {"policy": self._policy(conn, novel_id), "totals": self._totals(conn, novel_id), "calls": rows,
+            block=conn.execute("SELECT message,created_at,expires_at FROM budget_blocks WHERE novel_id=? AND (expires_at IS NULL OR expires_at>?)",(novel_id,stamp)).fetchone()
+            return {"policy": policy, "totals": self._totals(conn, novel_id), "calls": rows,
+                    "calls_page": {"offset": offset, "total": count, "limit": 100},
+                    "daily": self._daily_report(conn, novel_id, policy, stamp, day),
                     "budget_block":dict(block) if block else None}
 
     def save_job(self, job, request=None):
