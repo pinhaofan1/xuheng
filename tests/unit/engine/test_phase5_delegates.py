@@ -53,7 +53,8 @@ async def test_process_novel_treats_legacy_planning_as_macro_planning():
 
 
 @pytest.mark.asyncio
-async def test_auto_approve_waits_for_active_invocation_instead_of_skipping_stage(monkeypatch):
+@pytest.mark.parametrize("status",["failed","blocked","cancelled","awaiting_pre_call_review"])
+async def test_auto_approve_waits_for_active_invocation_instead_of_skipping_stage(monkeypatch,status):
     from domain.novel.entities.novel import AutopilotStatus, NovelStage
 
     host = MagicMock()
@@ -69,7 +70,7 @@ async def test_auto_approve_waits_for_active_invocation_instead_of_skipping_stag
         "engine.runtime.novel_lifecycle._active_invocation_state",
         lambda _novel_id: {
             "has_active_invocation": True,
-            "active_invocation_status": "failed",
+            "active_invocation_status": status,
             "active_invocation_session_id": "session-1",
         },
     )
@@ -77,6 +78,7 @@ async def test_auto_approve_waits_for_active_invocation_instead_of_skipping_stag
     await process_novel(host, novel)
 
     assert novel.current_stage == NovelStage.PAUSED_FOR_REVIEW
+    assert novel.autopilot_status == (AutopilotStatus.RUNNING if status=="awaiting_pre_call_review" else AutopilotStatus.STOPPED)
     host.story_node_repo.get_by_novel.assert_not_awaited()
 
 

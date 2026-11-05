@@ -99,7 +99,12 @@ def _pause_for_invocation(host: Any, novel: Novel, outcome) -> None:
         writing_substep_label="宏观规划 · AI 请求面板",
     )
     novel.current_stage = NovelStage.PAUSED_FOR_REVIEW
-    novel.autopilot_status = AutopilotStatus.RUNNING
+    failed = outcome.status in {"blocked","failed","cancelled"}
+    novel.autopilot_status = AutopilotStatus.STOPPED if failed else AutopilotStatus.RUNNING
+    if failed:
+        host._update_shared_state(novel.novel_id.value,autopilot_status="stopped",
+            writing_substep="invocation_failed",writing_substep_label="AI 请求未完成，等待恢复",
+            last_error="宏观规划请求未完成，请检查模型配置或网络后手动恢复")
     host._flush_novel(novel)
 
 

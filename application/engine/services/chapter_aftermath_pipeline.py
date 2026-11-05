@@ -266,7 +266,11 @@ class ChapterAftermathPipeline:
                 chapter_number,
                 _sync_narrative,
             )
-            out["narrative_sync_ok"] = True
+            out["narrative_sync_ok"] = bool(sync_flags.get("narrative_sync_ok",True))
+            if not out["narrative_sync_ok"]:
+                # Do not spend more tokens on optional work after the critical
+                # extraction failed. The saved manuscript is retained for resume.
+                return out
             out["vector_stored"] = bool(sync_flags.get("vector_stored"))
             out["foreshadow_stored"] = bool(sync_flags.get("foreshadow_stored"))
             out["triples_extracted"] = bool(sync_flags.get("triples_extracted"))

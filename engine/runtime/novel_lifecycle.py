@@ -120,8 +120,15 @@ async def process_novel(host: Any, novel: Novel) -> None:
             logger.info("[%s] 开始审计", novel.novel_id)
             await run_chapter_audit(host, novel)
         elif novel.current_stage == NovelStage.PAUSED_FOR_REVIEW:
+            shared = _active_invocation_state(novel.novel_id.value)
+            if shared.get("has_active_invocation") and shared.get("active_invocation_status") in {"failed","blocked","cancelled"}:
+                novel.autopilot_status = AutopilotStatus.STOPPED
+                host._update_shared_state(novel.novel_id.value,autopilot_status="stopped",
+                    writing_substep="invocation_failed",writing_substep_label="AI 请求未完成，等待恢复",
+                    last_error="已有 AI 请求未完成，请检查配置或网络后手动恢复。")
+                host._save_novel_state(novel)
+                return
             if getattr(novel, "auto_approve_mode", False):
-                shared = _active_invocation_state(novel.novel_id.value)
                 if shared.get("has_active_invocation"):
                     logger.info(
                         "[%s] 全自动模式：invocation 尚未完成，保持等待 status=%s session=%s",

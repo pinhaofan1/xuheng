@@ -173,6 +173,7 @@ class ChapterProseInvocationComposer:
             return ProseCompositionResult(
                 awaiting_review=True,
                 session_id=prepared.session.id,
+                status=prepared.session.status.value,
             )
 
         stop_seen = False

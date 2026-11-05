@@ -83,6 +83,17 @@ async def run_story_pipeline_writing(daemon: Any, novel: Any) -> None:
     from engine.pipelines.registry import get_pipeline_registry
 
     novel_id = novel.novel_id.value if hasattr(novel.novel_id, "value") else str(novel.novel_id)
+    from application.engine.services.chapter_processing import completed_count,pending_saved_chapter
+    pending = pending_saved_chapter(getattr(getattr(daemon,"chapter_repository",None),"db",None),novel_id)
+    if pending is not None:
+        novel.current_stage = NovelStage.AUDITING
+        daemon._update_shared_state(novel_id,current_stage="auditing",current_chapter_number=pending,
+            writing_substep="resume_chapter_audit",writing_substep_label="继续已保存章节的章后处理")
+        daemon._flush_novel(novel)
+        return
+    saved_count = completed_count(daemon,novel_id)
+    if saved_count is not None:
+        novel.current_auto_chapters = saved_count
     current = int(novel.current_auto_chapters or 0)
     target = int(novel.target_chapters or 50)
     protection = int(novel.max_auto_chapters or 9999)
@@ -166,6 +177,36 @@ async def run_story_pipeline_writing(daemon: Any, novel: Any) -> None:
     pipeline = get_pipeline_registry().create_pipeline(genre)
     result = await pipeline.run_chapter(ctx)
 
+    if not result.success and result.error == "chapter_save_unconfirmed":
+        novel.current_stage = NovelStage.WRITING
+        novel.autopilot_status = AutopilotStatus.STOPPED
+        daemon._update_shared_state(novel_id,current_stage="writing",autopilot_status="stopped",
+            writing_substep="chapter_save_unconfirmed",writing_substep_label="正文保存未确认，生成稿已保留",
+            last_error="请在任务与用量取回生成稿，确认存储后手动恢复。")
+        daemon._flush_novel(novel)
+        return
+
+    if not result.success and (result.error == "invocation_failed" or ctx.metadata.get("invocation_failed") is True):
+        novel.current_stage = NovelStage.WRITING
+        novel.autopilot_status = AutopilotStatus.STOPPED
+        daemon._update_shared_state(novel_id,current_stage="writing",autopilot_status="stopped",
+            writing_substep="invocation_failed",writing_substep_label="正文请求未完成，等待恢复",
+            last_error="正文生成请求未完成，未自动重新请求。请检查模型或网络后手动恢复。")
+        daemon._flush_novel(novel)
+        return
+
+    if not result.success and result.error == "aftermath_failed":
+        saved_count = completed_count(daemon,novel_id)
+        if saved_count is not None:
+            novel.current_auto_chapters = saved_count
+        novel.current_stage = NovelStage.AUDITING
+        novel.autopilot_status = AutopilotStatus.STOPPED
+        daemon._update_shared_state(novel_id,current_stage="auditing",autopilot_status="stopped",
+            writing_substep="aftermath_failed",writing_substep_label="正文已保存，章后同步待恢复",
+            last_error="章后叙事同步未完成，请检查模型或网络后手动恢复")
+        daemon._flush_novel(novel)
+        return
+
     if not result.success and result.error == "awaiting_ai_review":
         novel.current_stage = NovelStage.PAUSED_FOR_REVIEW
         daemon._flush_novel(novel)
@@ -208,7 +249,8 @@ async def run_story_pipeline_writing(daemon: Any, novel: Any) -> None:
                     "source": "story_pipeline",
                     "reused": False,
                 }
-        novel.current_auto_chapters = (novel.current_auto_chapters or 0) + 1
+        saved_count = completed_count(daemon,novel_id)
+        novel.current_auto_chapters = saved_count if saved_count is not None else (novel.current_auto_chapters or 0) + 1
         novel.current_chapter_in_act = (novel.current_chapter_in_act or 0) + 1
         novel.current_beat_index = 0
         novel.beats_completed = False

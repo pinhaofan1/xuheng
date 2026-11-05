@@ -10,6 +10,7 @@ from domain.novel.entities.novel import Novel, NovelStage, AutopilotStatus
 from domain.novel.value_objects.novel_id import NovelId
 from domain.novel.value_objects.chapter_id import ChapterId
 from domain.novel.value_objects.generation_preferences import GenerationPreferences
+from application.engine.services.chapter_processing import journal_for_host,content_digest,pending_saved_chapter
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ def _consume_pending_payload(
     return dict(pending_payload)
 
 
-def _pause_for_invocation(host: Any, novel: Novel, outcome) -> None:
+def _pause_for_invocation(host: Any, novel: Novel, outcome, *, chapter_number=None, content_hash="") -> None:
     session = outcome.payload.get("session") if isinstance(outcome.payload, Mapping) else None
     policy_value = getattr(getattr(session, "policy", ""), "value", "") or "AUTOPILOT_PAUSE"
     host._update_shared_state(
@@ -100,7 +101,17 @@ def _pause_for_invocation(host: Any, novel: Novel, outcome) -> None:
         autopilot_pause_reason=outcome.autopilot_pause_reason or "awaiting_ai_review",
     )
     novel.current_stage = NovelStage.PAUSED_FOR_REVIEW
-    novel.autopilot_status = AutopilotStatus.RUNNING
+    failed = outcome.status in {"blocked","failed","cancelled"}
+    novel.autopilot_status = AutopilotStatus.STOPPED if failed else AutopilotStatus.RUNNING
+    if failed:
+        novel.current_stage = NovelStage.AUDITING
+        message = "审计请求未完成，正文已保存。请检查模型配置或网络后手动恢复。"
+        journal = journal_for_host(host)
+        if journal is not None and chapter_number is not None:
+            journal.checkpoint(novel.novel_id.value,chapter_number,content_hash,
+                "audit_report" if outcome.operation.endswith(".audit") else "aftermath_report","failed",message)
+        host._update_shared_state(novel.novel_id.value,autopilot_status="stopped",current_stage="auditing",
+            writing_substep="invocation_failed",writing_substep_label="AI 请求未完成，等待恢复",last_error=message)
     host._flush_novel(novel)
 
 
@@ -148,6 +159,8 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
         return
 
     chapter_num = host._latest_completed_chapter_number(NovelId(novel.novel_id.value))
+    db = getattr(getattr(host,"chapter_repository",None),"db",None)
+    chapter_num = pending_saved_chapter(db,novel.novel_id.value) or chapter_num
     if chapter_num is None:
         novel.current_stage = NovelStage.WRITING
         host._update_shared_state(
@@ -172,6 +185,15 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
     content = chapter.content or ""
     original_content = content
     original_content_sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    journal = journal_for_host(host)
+    digest = original_content_sha256
+    def read_step(step):
+        return journal.chapter_step(novel.novel_id.value,chapter_num,digest,step) if journal is not None else None
+    def save_step(step,payload):
+        if journal is not None:
+            journal.save_chapter_step(novel.novel_id.value,chapter_num,digest,step,payload)
+    if journal is not None:
+        journal.checkpoint(novel.novel_id.value,chapter_num,digest,"auditing")
     host._sync_novel_current_act_from_chapter_number(novel, chapter_num)
     host._cache_stats_to_shared_memory(novel)
     chapter_id = ChapterId(chapter.id)
@@ -200,19 +222,18 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
         "audit_voice_check",
         {"chapter_number": chapter_num}
     )
-    drift_result = await host._call_with_timeout(
-        host._score_voice_only(novel.novel_id.value, chapter_num, content),
-        timeout=180.0,  # 文风预检最多 3 分钟
-        novel_id=novel.novel_id.value,
-        label="voice_check",
-        timeout_default={"drift_alert": False, "similarity_score": None},
-    )
-    content, drift_result = await host._apply_voice_rewrite_loop(
-        novel,
-        chapter,
-        content,
-        drift_result,
-    )
+    drift_result = read_step("voice")
+    if drift_result is None:
+        drift_result = await host._call_with_timeout(
+            host._score_voice_only(novel.novel_id.value, chapter_num, content),
+            timeout=180.0,
+            novel_id=novel.novel_id.value,
+            label="voice_check",
+            timeout_default={"drift_alert": False, "similarity_score": None},
+        )
+        content, drift_result = await host._apply_voice_rewrite_loop(novel,chapter,content,drift_result)
+        digest = content_digest(content)
+        save_step("voice",drift_result)
     content_changed_by_audit = content != original_content
     # 🔥 发布文风预检结果事件
     host._publish_audit_event(
@@ -231,13 +252,17 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
         node_key="anti-ai-chapter-audit",
     )
 
-    audit_review_payload = _consume_pending_payload(
-        host,
-        novel_id=novel.novel_id.value,
-        chapter_number=chapter_num,
-        number_key="autopilot_pending_audit_chapter_number",
-        payload_key="autopilot_pending_audit_report",
-    )
+    audit_review_payload = read_step("audit_report")
+    if audit_review_payload is None:
+        audit_review_payload = _consume_pending_payload(
+            host,
+            novel_id=novel.novel_id.value,
+            chapter_number=chapter_num,
+            number_key="autopilot_pending_audit_chapter_number",
+            payload_key="autopilot_pending_audit_report",
+        )
+        if audit_review_payload is not None:
+            save_step("audit_report",audit_review_payload)
     shared_state = _read_shared_state(novel.novel_id.value)
     if audit_review_payload is None and shared_state.get("requires_ai_review") and shared_state.get("active_invocation_session_id"):
         logger.info(
@@ -267,9 +292,10 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
             "failed",
             "cancelled",
         }:
-            _pause_for_invocation(host, novel, audit_outcome)
+            _pause_for_invocation(host, novel, audit_outcome,chapter_number=chapter_num,content_hash=digest)
             return
         audit_review_payload = _extract_commit_continuation(audit_outcome.payload)
+        save_step("audit_report",audit_review_payload)
     if audit_review_payload:
         logger.info(
             "[%s] 审计 Invocation 已提交 chapter=%s risk_flags=%s",
@@ -285,11 +311,14 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
     pending_map = getattr(host, "_pending_story_pipeline_aftermath", None)
     if isinstance(pending_map, dict):
         pending_aftermath = pending_map.pop((novel.novel_id.value, chapter_num), None)
+    saved_aftermath = read_step("aftermath")
+    if saved_aftermath is not None:
+        pending_aftermath = {**saved_aftermath,"content_sha256":digest}
 
     can_reuse_aftermath = (
         isinstance(pending_aftermath, dict)
-        and not content_changed_by_audit
-        and pending_aftermath.get("content_sha256") == original_content_sha256
+        and bool(pending_aftermath.get("narrative_sync_ok"))
+        and pending_aftermath.get("content_sha256") == digest
     )
     should_rebuild_aftermath = not can_reuse_aftermath and content_changed_by_audit
     aftermath_label = (
@@ -322,13 +351,17 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
         content=content,
         node_key="chapter-aftermath",
     )
-    aftermath_payload = _consume_pending_payload(
-        host,
-        novel_id=novel.novel_id.value,
-        chapter_number=chapter_num,
-        number_key="autopilot_pending_aftermath_chapter_number",
-        payload_key="autopilot_pending_aftermath_payload",
-    )
+    aftermath_payload = read_step("aftermath_report")
+    if aftermath_payload is None:
+        aftermath_payload = _consume_pending_payload(
+            host,
+            novel_id=novel.novel_id.value,
+            chapter_number=chapter_num,
+            number_key="autopilot_pending_aftermath_chapter_number",
+            payload_key="autopilot_pending_aftermath_payload",
+        )
+        if aftermath_payload is not None:
+            save_step("aftermath_report",aftermath_payload)
     shared_state = _read_shared_state(novel.novel_id.value)
     if aftermath_payload is None and shared_state.get("requires_ai_review") and shared_state.get("active_invocation_session_id"):
         logger.info(
@@ -358,9 +391,10 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
             "failed",
             "cancelled",
         }:
-            _pause_for_invocation(host, novel, aftermath_outcome)
+            _pause_for_invocation(host, novel, aftermath_outcome,chapter_number=chapter_num,content_hash=digest)
             return
         aftermath_payload = _extract_commit_continuation(aftermath_outcome.payload)
+        save_step("aftermath_report",aftermath_payload)
     if can_reuse_aftermath:
         audit_similarity = drift_result.get("similarity_score")
         drift_result = {
@@ -417,6 +451,18 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
             "chapter_aftermath_review": aftermath_payload,
             "chapter_summary": aftermath_payload.get("chapter.summary", ""),
         }
+
+    if not bool(drift_result.get("narrative_sync_ok",True)):
+        message = "正文已保存，章后叙事同步未完成。请检查模型或网络后手动恢复，已完成的审计步骤会复用。"
+        if journal is not None:
+            journal.checkpoint(novel.novel_id.value,chapter_num,digest,"aftermath","failed",message)
+        novel.autopilot_status = AutopilotStatus.STOPPED
+        novel.current_stage = NovelStage.AUDITING
+        host._update_shared_state(novel.novel_id.value,autopilot_status="stopped",current_stage="auditing",
+            writing_substep="aftermath_failed",writing_substep_label="正文已保存，章后同步待恢复",last_error=message)
+        host._flush_novel(novel)
+        return
+    save_step("aftermath",drift_result)
 
     # ── 停止检查：章后管线和文风预检完成后 ──
     if not host._is_still_running(novel):
@@ -535,9 +581,15 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
         return
 
     # 🛡️ Anti-AI：在章末闸门判定之前执行（结果落库），以便「严重」可触发 paused_for_review
-    anti_report = await host._run_anti_ai_audit(
-        novel.novel_id.value, chapter_num, content
-    )
+    saved_anti = read_step("anti_ai")
+    if saved_anti is None:
+        anti_report = await host._run_anti_ai_audit(novel.novel_id.value,chapter_num,content)
+        anti_assessment_saved = getattr(getattr(anti_report,"metrics",None),"overall_assessment",None)
+        if anti_report is not None:
+            save_step("anti_ai",{"assessment":anti_assessment_saved})
+    else:
+        from types import SimpleNamespace
+        anti_report = SimpleNamespace(metrics=SimpleNamespace(overall_assessment=saved_anti["assessment"]))
 
     prefs = getattr(novel, "generation_prefs", None) or GenerationPreferences()
     auto = bool(getattr(novel, "auto_approve_mode", False))
@@ -572,7 +624,10 @@ async def run_chapter_audit(host: Any, novel: Novel) -> None:
 
     # 5. 全书完成检测（用轻量 COUNT 查询替代 list_by_novel，减少 DB 锁持有时间）
     completed_count = host._count_completed_chapters(NovelId(novel.novel_id.value))
-    book_done = completed_count >= novel.target_chapters
+    novel.current_auto_chapters = completed_count
+    if journal is not None:
+        journal.checkpoint(novel.novel_id.value,chapter_num,digest,"audited","completed")
+    book_done = completed_count >= novel.target_chapters and pending_saved_chapter(db,novel.novel_id.value) is None
 
     if pause_gate:
         novel.current_stage = NovelStage.PAUSED_FOR_REVIEW

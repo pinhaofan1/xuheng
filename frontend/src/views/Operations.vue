@@ -27,6 +27,7 @@ let disposed = false
 const statuses: Record<string,string> = { queued: '排队中', running: '进行中', completed: '已完成', failed: '失败', cancelled: '已取消', interrupted: '已中断' }
 const kinds: Record<string,string> = { llm: '大模型', embedding: 'Embedding', rerank: 'Reranker' }
 const kindOptions = Object.entries(kinds).map(([value,label]) => ({value,label}))
+const checkpointLabels: Record<string,string> = {saving:'保存前确认',saved:'正文已保存',auditing:'章后审计',audit_report:'审计报告',aftermath_report:'章后提取',aftermath:'叙事同步',audited:'审计完成'}
 const format = (n: number) => n.toLocaleString('zh-CN')
 const time = (s: string) => new Date(s).toLocaleString('zh-CN', { hour12: false })
 const active = (job: ReviewJob) => ['queued','running'].includes(job.status)
@@ -59,6 +60,15 @@ async function cancel(job: ReviewJob) {
   try { await evidenceReviewApi.cancelJob(novel.value, job.id); await load() }
   catch (e) { message.error(formatApiError(e, '取消任务失败')) }
   finally { pending.value = '' }
+}
+async function downloadDraft(number:number,hash:string) {
+  try {
+    const blob=await operationsApi.draft(novel.value,number,hash)
+    const url=URL.createObjectURL(blob)
+    const link=document.createElement('a');link.href=url;link.download=`chapter-${number}-recovered.md`
+    document.body.appendChild(link);link.click();link.remove()
+    setTimeout(()=>URL.revokeObjectURL(url),1000)
+  } catch(e) { message.error(formatApiError(e,'取回生成稿失败')) }
 }
 function retry(job: ReviewJob) {
   dialog.warning({ title: '重新发起本章审校', content: '将按最新设定重新执行，并可能产生新的模型费用。原任务与已保存结果会保留；正文已变化时，需要回到章节重新审校。', positiveText: '确认重新发起', negativeText: '取消',
@@ -101,6 +111,15 @@ onBeforeUnmount(() => { disposed = true; ++sequence; clearTimeout(timer) })
             <span class="job-status" :class="job.status">{{ statuses[job.status] }}</span>
             <div class="job-body"><h3>第 {{ job.number }} 章 · AI 一致性审校</h3><p>{{ job.stage }}</p><p v-if="job.error" class="job-error">{{ job.error }}</p><small>{{ time(job.created_at) }}<template v-if="active(job)"> · 执行心跳 {{ age(job) }}<span v-if="clock - Date.parse(job.updated_at) > 20000">，执行进程可能失去响应</span></template><template v-if="job.retry_of"> · 重新发起</template></small></div>
             <div class="job-actions"><router-link v-if="job.status === 'completed'" :to="`/book/${novel}/review/${job.number}?mode=ai&run=${job.run_id}`">查看结果 →</router-link><n-button v-else-if="active(job)" size="small" :disabled="job.cancel_requested || pending === job.id" @click="cancel(job)">请求取消</n-button><n-button v-else size="small" :disabled="!!pending" @click="retry(job)">重新发起</n-button></div>
+          </article>
+        </section>
+        <section class="operations-section">
+          <div class="section-heading"><div><h2>托管章节检查点</h2><p>保存正文与章后步骤的完成记录。中断后从创作工作台手动恢复，已完成步骤按正文版本复用。</p></div></div>
+          <p v-if="!data.chapter_progress?.length" class="table-empty">暂无章节检查点。新版托管保存正文后会在这里记录。</p>
+          <article v-for="checkpoint in data.chapter_progress" :key="`${checkpoint.number}-${checkpoint.content_hash}`" class="job-row">
+            <span class="job-status" :class="checkpoint.stale ? '' : checkpoint.status">{{ checkpoint.uncommitted ? '待确认' : checkpoint.stale ? '旧版本' : checkpoint.status === 'completed' ? '已完成' : checkpoint.status === 'failed' ? '待恢复' : '未完成' }}</span>
+            <div class="job-body"><h3>第 {{ checkpoint.number }} 章 · {{ checkpointLabels[checkpoint.stage] || '章后处理' }}</h3><p v-if="checkpoint.uncommitted">生成稿与数据库正文尚未一致，请先取回稿件并确认正文，再恢复托管。</p><p v-else-if="checkpoint.stale">正文已修改或章节已删除，此记录不会作为当前正文的恢复依据。</p><p v-else-if="checkpoint.error" class="job-error">{{ checkpoint.error }}</p><small>最近保存 {{ time(checkpoint.updated_at) }}</small></div>
+            <div class="job-actions"><n-button v-if="checkpoint.draft_available" size="small" @click="downloadDraft(checkpoint.number,checkpoint.content_hash)">取回生成稿</n-button><router-link v-if="!checkpoint.stale" :to="`/book/${novel}/workbench?chapter=${checkpoint.number}`">返回创作处理 →</router-link></div>
           </article>
         </section>
         <section class="operations-section">

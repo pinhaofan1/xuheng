@@ -88,10 +88,18 @@ class AutopilotRecoveryPolicy:
             stage = NovelStage.MACRO_PLANNING.value
 
         pending = self._find_pending_invocation(novel_id)
+        from application.engine.services.chapter_processing import pending_saved_chapter
+        unfinished = pending_saved_chapter(self._get_db(),novel_id)
+        if unfinished is not None and stage in {NovelStage.WRITING.value,NovelStage.AUDITING.value,NovelStage.ACT_PLANNING.value,NovelStage.PAUSED_FOR_REVIEW.value}:
+            # Keep an active invocation review gate until explicit start/resume.
+            if stage != NovelStage.PAUSED_FOR_REVIEW.value or (for_start and autopilot_stopped):
+                return AutopilotRecoveryDecision(novel_id=novel_id,next_stage=NovelStage.AUDITING.value,
+                    chapter_number=unfinished,clear_pending_invocation=self._is_retryable_pending(pending),
+                    reason="saved_chapter_pending_audit")
         if stage == NovelStage.PAUSED_FOR_REVIEW.value:
             if for_start and autopilot_stopped:
                 next_stage = self._retry_stage_after_interrupted_review(novel_id)
-                chapter_number = self._current_chapter_number(novel_id)
+                chapter_number = self._latest_completed_chapter_number(novel_id) if next_stage == NovelStage.AUDITING.value else self._current_chapter_number(novel_id)
                 story_pipeline = self._is_story_pipeline_writing_enabled()
                 return AutopilotRecoveryDecision(
                     novel_id=novel_id,
@@ -182,6 +190,13 @@ class AutopilotRecoveryPolicy:
     def _retry_stage_after_interrupted_review(self, novel_id: str) -> str:
         latest = self._find_latest_autopilot_invocation(novel_id)
         operation = str((latest or {}).get("operation") or "")
+        if operation in {"autopilot.chapter.audit","autopilot.chapter.aftermath","autopilot.after_chapter.extract"}:
+            from application.engine.services.chapter_processing import audit_completed
+            if audit_completed(self._get_db(),novel_id,self._latest_completed_chapter_number(novel_id)):
+                # Explicit resume accepts a completed chapter's review gate.
+                # It must not pay for another audit or reopen the same gate.
+                return NovelStage.WRITING.value
+            return NovelStage.AUDITING.value
         if operation in {"autopilot.chapter.prose", "autopilot.prose.from_script", "autopilot.outline.partition"}:
             return NovelStage.WRITING.value
         if operation == "autopilot.act.plan":

@@ -194,7 +194,33 @@ def operations(novel_id: str, service: EvidenceReviewService = Depends(get_evide
         service.store.require_novel(novel_id)
         result = get_operation_journal().summary(novel_id)
         result["jobs"] = get_review_jobs().history(novel_id)
+        rows = get_operation_journal().chapter_progress(novel_id)
+        current = {}
+        for row in rows:
+            number = row["number"]
+            if number not in current:
+                chapter = service.store.db.fetch_one("SELECT content FROM chapters WHERE novel_id=? AND number=?",(novel_id,number))
+                current[number] = text_hash(chapter["content"] or "") if chapter else None
+            row["stale"] = row["content_hash"] != current[number]
+            row["draft_available"] = bool(row["draft_available"])
+            row["uncommitted"] = row["stage"] == "saving" and row["stale"] and row["draft_available"]
+        result["chapter_progress"] = rows
         return result
+    return _call(operation)
+
+
+@router.get("/{novel_id}/chapters/{number}/drafts/{content_hash}/export")
+def export_generated_draft(novel_id: str, number: int = Path(ge=1), content_hash: str = Path(pattern="^[0-9a-f]{64}$"),
+                           service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    from fastapi.responses import Response
+    from infrastructure.persistence.operation_journal import get_operation_journal
+    def operation():
+        service.store.require_novel(novel_id)
+        draft = get_operation_journal().chapter_step(novel_id,number,content_hash,"generated_draft")
+        if draft is None or text_hash(draft.get("content", "")) != content_hash:
+            raise ReviewNotFound("未找到该作品对应版本的生成稿")
+        return Response(draft["content"],media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition":f'attachment; filename="chapter-{number}-recovered.md"'})
     return _call(operation)
 
 

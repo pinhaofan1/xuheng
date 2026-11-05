@@ -45,6 +45,16 @@ class OperationJournal:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS jobs_active ON jobs(novel_id,number)
                     WHERE status IN ('queued','running');
+                CREATE TABLE IF NOT EXISTS chapter_progress(
+                    novel_id TEXT NOT NULL, number INTEGER NOT NULL, content_hash TEXT NOT NULL,
+                    stage TEXT NOT NULL, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
+                    PRIMARY KEY(novel_id,number,content_hash)
+                );
+                CREATE TABLE IF NOT EXISTS chapter_steps(
+                    novel_id TEXT NOT NULL, number INTEGER NOT NULL, content_hash TEXT NOT NULL,
+                    step TEXT NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    PRIMARY KEY(novel_id,number,content_hash,step)
+                );
             """)
 
     @contextmanager
@@ -178,6 +188,35 @@ class OperationJournal:
             if row is None:
                 raise ValueError("未找到该作品中的任务")
             return json.loads(row[0])
+
+    def checkpoint(self, novel_id, number, content_hash, stage, status="running", error=""):
+        with self.connection() as conn:
+            conn.execute("INSERT INTO chapter_progress VALUES (?,?,?,?,?,?,?) ON CONFLICT(novel_id,number,content_hash) DO UPDATE SET stage=excluded.stage,status=excluded.status,error=excluded.error,updated_at=excluded.updated_at",
+                         (novel_id,number,content_hash,stage,status,error,now()))
+
+    def chapter_checkpoint(self, novel_id, number, content_hash):
+        with self.connection() as conn:
+            row=conn.execute("SELECT * FROM chapter_progress WHERE novel_id=? AND number=? AND content_hash=?",(novel_id,number,content_hash)).fetchone()
+            return dict(row) if row else None
+
+    def chapter_progress(self, novel_id, pending_only=False):
+        with self.connection() as conn:
+            suffix = " AND p.status<>'completed' ORDER BY p.number,p.updated_at DESC" if pending_only else " ORDER BY p.updated_at DESC LIMIT 100"
+            query = """SELECT p.*, EXISTS(SELECT 1 FROM chapter_steps s WHERE s.novel_id=p.novel_id
+                AND s.number=p.number AND s.content_hash=p.content_hash AND s.step='generated_draft') AS draft_available
+                FROM chapter_progress p WHERE p.novel_id=?"""
+            return [dict(row) for row in conn.execute(query+suffix,(novel_id,))]
+
+    def chapter_step(self, novel_id, number, content_hash, step):
+        with self.connection() as conn:
+            row = conn.execute("SELECT payload FROM chapter_steps WHERE novel_id=? AND number=? AND content_hash=? AND step=?",
+                               (novel_id,number,content_hash,step)).fetchone()
+            return json.loads(row[0]) if row else None
+
+    def save_chapter_step(self, novel_id, number, content_hash, step, payload):
+        with self.connection() as conn:
+            conn.execute("INSERT OR REPLACE INTO chapter_steps VALUES (?,?,?,?,?,?)",
+                         (novel_id,number,content_hash,step,json.dumps(payload,ensure_ascii=False,allow_nan=False),now()))
 
 
 @lru_cache(maxsize=16)

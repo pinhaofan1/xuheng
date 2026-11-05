@@ -55,3 +55,20 @@ test('operations layout works on a narrow screen and budget edits survive backgr
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({path:'../.validation/operations-budget-mobile.png',fullPage:false,animations:'disabled'})
 })
+
+test('unconfirmed generated manuscript can be recovered without replacing saved text', async ({page}) => {
+  const before=await(await page.request.get(`/api/v1/novels/${book}/chapters/1`)).json()
+  await page.goto(`/book/${book}/operations`)
+  await expect(page.getByRole('heading',{name:'托管章节检查点',exact:true})).toBeVisible()
+  await expect(page.getByText('生成稿与数据库正文尚未一致，请先取回稿件并确认正文，再恢复托管。',{exact:true})).toBeVisible()
+  const downloadPromise=page.waitForEvent('download')
+  await page.getByRole('button',{name:'取回生成稿',exact:true}).click()
+  const download=await downloadPromise
+  expect(download.suggestedFilename()).toBe('chapter-1-recovered.md')
+  const {readFile}=await import('node:fs/promises')
+  expect(await readFile((await download.path())!,'utf-8')).toContain('浏览器测试生成稿')
+  const after=await(await page.request.get(`/api/v1/novels/${book}/chapters/1`)).json()
+  expect(after.content).toBe(before.content)
+  await page.evaluate(()=>window.scrollTo(0,0))
+  await page.screenshot({path:'../.validation/checkpoints-desktop.png',fullPage:true,animations:'disabled'})
+})

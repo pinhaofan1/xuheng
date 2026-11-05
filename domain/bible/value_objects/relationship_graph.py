@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 from domain.bible.value_objects.character_id import CharacterId
 from domain.bible.value_objects.relationship import Relationship
 
@@ -84,3 +84,7 @@ class RelationshipGraph:
                 result.append((other_char_id, current_relation))
 
         return result
+
+    def get_connection_ids(self, char_id: CharacterId) -> Set[CharacterId]:
+        """Read neighbours without allocating an unused relationship tuple per edge."""
+        return {other for other,history in self._adjacency_list.get(char_id,{}).items() if history}

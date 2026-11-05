@@ -2140,6 +2140,7 @@ async def sync_chapter_narrative_after_save(
     返回各子步骤是否成功落库，供章后管线写入 last_audit_* 审阅快照。
     """
     empty_flags: Dict[str, bool] = {
+        "narrative_sync_ok": False,
         "vector_stored": False,
         "foreshadow_stored": False,
         "triples_extracted": False,
@@ -2153,6 +2154,7 @@ async def sync_chapter_narrative_after_save(
         return empty_flags
 
     flags: Dict[str, bool] = {
+        "narrative_sync_ok": False,
         "vector_stored": False,
         "foreshadow_stored": False,
         "triples_extracted": False,
@@ -2209,6 +2211,10 @@ async def sync_chapter_narrative_after_save(
         logger.warning("LLM 章末 bundle 失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
         summary, key_events, open_threads = "", "", ""
         bundle = {"relation_triples": [], "foreshadow_hints": []}
+
+    if not isinstance(summary,str) or not summary.strip():
+        logger.warning("章末摘要未成功提取，保留原知识数据且停止后续同步 novel=%s ch=%s",novel_id,chapter_number)
+        return flags
 
     # --- 独立多维张力评分 ---
     from application.analyst.services.tension_scoring_service import TensionScoringService
@@ -2305,6 +2311,7 @@ async def sync_chapter_narrative_after_save(
         micro_beats=mb_out if mb_out else None,
         sync_status="synced" if summary else "draft",
     )
+    flags["narrative_sync_ok"] = True
 
     if triple_repository is not None or foreshadowing_repo is not None:
         try:

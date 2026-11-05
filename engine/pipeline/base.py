@@ -70,6 +70,7 @@ class BaseStoryPipeline(ABC):
     MIN_PASS_SCORE: float = 0.6
     BATCH_WRITE_INTERVAL: int = 3
     STREAM_PUSH_INTERVAL: float = 0.15
+    SAVE_CONFIRM_TIMEOUT: float = 5.0
 
     def __init__(self):
         """初始化管线。子类可在此设置额外依赖。"""
@@ -165,12 +166,36 @@ class BaseStoryPipeline(ABC):
                 # 验证失败不阻断管线，记录违规但继续
 
             # 6. 保存章节（独立短连接写库）
+            from application.engine.services.chapter_processing import journal_for_context, content_digest
+            checkpoint_journal = journal_for_context(ctx)
+            checkpoint_hash = content_digest(ctx.chapter_content)
+            if checkpoint_journal is not None:
+                checkpoint_journal.save_chapter_step(ctx.novel_id,ctx.chapter_number,checkpoint_hash,"generated_draft",
+                    {"content":ctx.chapter_content})
+                checkpoint_journal.checkpoint(ctx.novel_id,ctx.chapter_number,checkpoint_hash,"saving")
             self._mark_pipeline_step(ctx, "save_chapter")
             r = await self._step_save_chapter(ctx)
             step_status["save_chapter"] = "ok" if r.passed else "failed"
             if not r.passed:
+                if checkpoint_journal is not None:
+                    checkpoint_journal.checkpoint(ctx.novel_id,ctx.chapter_number,checkpoint_hash,"saving","failed",
+                        "正文写入失败，生成稿已保留，可在任务与用量中取回后再恢复")
+                    return self._make_result(ctx,success=False,error="chapter_save_unconfirmed",step_status=step_status)
                 return self._make_result(ctx, success=False, error=r.message, step_status=step_status)
+            if checkpoint_journal is not None:
+                import asyncio
+                deadline = time.monotonic()+self.SAVE_CONFIRM_TIMEOUT
+                while not self._chapter_completed_in_repository(ctx) and time.monotonic()<deadline:
+                    await asyncio.sleep(.05)
+                if not self._chapter_completed_in_repository(ctx):
+                    ctx.chapter_saved = False
+                    checkpoint_journal.checkpoint(ctx.novel_id,ctx.chapter_number,checkpoint_hash,"saving","failed",
+                        "正文保存未确认，生成稿已保留。请在任务与用量取回正文并检查存储，再手动恢复。")
+                    return self._make_result(ctx,success=False,error="chapter_save_unconfirmed",step_status=step_status)
             self._mark_pipeline_step(ctx, "save_chapter", completed=True)
+            self._discard_generation_workspace(ctx)
+            if checkpoint_journal is not None:
+                checkpoint_journal.checkpoint(ctx.novel_id,ctx.chapter_number,checkpoint_hash,"saved")
 
             # 7. 文风审计（声线漂移检测+改写）
             self._mark_pipeline_step(ctx, "validate_voice")
@@ -185,6 +210,16 @@ class BaseStoryPipeline(ABC):
             step_status["run_post_commit"] = "ok" if r.passed else "warning"
             if not r.passed:
                 logger.warning(f"[{ctx.novel_id}] 章后管线失败: {r.message}")
+            if checkpoint_journal is not None:
+                result = {key:getattr(ctx,key,False) for key in ("narrative_sync_ok","vector_stored","foreshadow_stored","triples_extracted","causal_edges_stored","character_mutations_stored","debt_updated")}
+                result.update(similarity_score=ctx.similarity_score,drift_alert=ctx.drift_alert,tension_composite=ctx.tension_composite)
+                if result["narrative_sync_ok"]:
+                    checkpoint_journal.save_chapter_step(ctx.novel_id,ctx.chapter_number,checkpoint_hash,"aftermath",result)
+            if ctx.aftermath_pipeline is not None and not ctx.narrative_sync_ok:
+                if checkpoint_journal is not None:
+                    checkpoint_journal.checkpoint(ctx.novel_id,ctx.chapter_number,checkpoint_hash,"aftermath","failed",
+                        "正文已保存，章后叙事同步未完成，请检查模型或网络后恢复")
+                return self._make_result(ctx,success=False,error="aftermath_failed",step_status=step_status)
 
             # 9. 张力打分（0-100 多维评分）
             self._mark_pipeline_step(ctx, "score_tension")
@@ -520,6 +555,7 @@ class BaseStoryPipeline(ABC):
 
     async def _step_generate_with_composer(self, ctx: PipelineContext, composer: Any) -> StepResult:
         self._log_step("generate", "LLM 生成（整章正文 Composer）")
+        ctx.metadata.pop("invocation_failed",None)
 
         if ctx.llm_service is None:
             return StepResult.fail("llm_service 未设置，无法生成")
@@ -586,8 +622,15 @@ class BaseStoryPipeline(ABC):
         try:
             result = await composer.compose(request)
         except Exception as exc:
+            ctx.metadata["invocation_failed"] = True
             logger.error("[%s] 整章 Composer 失败，停止本章生成: %s", ctx.novel_id, exc)
             return StepResult.fail(f"整章正文生成失败: {exc}")
+
+        if result.status in {"blocked","failed"}:
+            ctx.metadata["invocation_failed"] = True
+            ctx.metadata["active_invocation_session_id"] = result.session_id
+            workspace.discard(ctx.novel_id,ctx.chapter_number,run_id)
+            return StepResult.fail("invocation_failed")
 
         if result.awaiting_review:
             ctx.metadata["awaiting_ai_review"] = True
@@ -706,14 +749,12 @@ class BaseStoryPipeline(ABC):
                     await self._save_chapter_via_repository(ctx)
                 ctx.chapter_saved = True
                 ctx.save_method = "queue"
-                self._discard_generation_workspace(ctx)
                 return StepResult.ok()
 
             # 降级：通过 repository 直接写库
             await self._save_chapter_via_repository(ctx)
             ctx.chapter_saved = True
             ctx.save_method = "repository"
-            self._discard_generation_workspace(ctx)
             return StepResult.ok()
         except Exception as e:
             return StepResult.fail(f"章节保存失败: {e}")
@@ -742,7 +783,7 @@ class BaseStoryPipeline(ABC):
             return False
         status = getattr(chapter, "status", "")
         status_value = status.value if hasattr(status, "value") else str(status)
-        return status_value == "completed" and bool(str(getattr(chapter, "content", "") or "").strip())
+        return status_value == "completed" and str(getattr(chapter,"content","") or "") == ctx.chapter_content
 
     async def _step_validate_voice(self, ctx: PipelineContext) -> StepResult:
         """步骤7：文风审计（声线漂移检测+定向改写）
@@ -839,6 +880,10 @@ class BaseStoryPipeline(ABC):
                 ctx.character_mutations_stored = bool(result.get("character_mutations_stored", False))
                 ctx.debt_updated = bool(result.get("debt_updated", False))
                 ctx.tension_composite = result.get("tension_composite")
+                if not ctx.narrative_sync_ok:
+                    _writing_progress(ctx,"chapter_aftermath_failed","章后叙事同步未完成",pipeline_wave_index=8,
+                        current_chapter_number=ctx.chapter_number,aftermath_live_status="failed")
+                    return StepResult.fail("章后叙事同步未完成")
                 # 文风结果也可能从 aftermath 返回
                 if result.get("similarity_score") is not None and ctx.similarity_score is None:
                     ctx.similarity_score = result["similarity_score"]

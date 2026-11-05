@@ -71,6 +71,10 @@ def main():
         "status":"running", "stage":"等待模型", "created_at":now(), "updated_at":now(),
         "run_id":None, "error":"", "cancel_requested":False},
         {"content_hash":text_hash("沈澜抬起左臂，指向远方。"),"output_tokens":2048,"retrieval_mode":"bm25"})
+    draft="浏览器测试生成稿：沈澜握住船舷，保留了那封未寄出的信。"
+    digest=text_hash(draft)
+    journal.save_chapter_step("ai-browser-fixture",1,digest,"generated_draft",{"content":draft})
+    journal.checkpoint("ai-browser-fixture",1,digest,"saving","failed","浏览器测试：正文写入未确认")
     evidence_model_client.configured_model = lambda control: {"configured": True, "model": "fixture-test-only", "protocol": "openai", "host": "fixture", "message": "仅用于浏览器测试，非真实模型"}
     routes.get_ai_review_service = lambda store: AIEvidenceReviewService(store, HistoricalRetriever(store), BrowserFixtureModel())
     from interfaces.main import app

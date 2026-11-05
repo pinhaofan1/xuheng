@@ -270,6 +270,25 @@ def test_policy_api_validation_book_isolation_and_no_reset(api,journal):
     assert client.get("/evidence-reviews/other/operations").json()["totals"]["calls"]==0
 
 
+def test_checkpoint_api_marks_stale_text_and_exports_only_book_scoped_draft(api,journal):
+    from application.audit.evidence_models import text_hash
+    client,manager,store=api
+    body="尚未确认保存的生成稿，必须保留。"
+    digest=text_hash(body)
+    journal.save_chapter_step("book",1,digest,"generated_draft",{"content":body})
+    journal.checkpoint("book",1,digest,"saving","failed","保存未确认")
+    result=client.get("/evidence-reviews/book/operations").json()
+    row=result["chapter_progress"][0]
+    assert row["stale"] and row["draft_available"] and row["uncommitted"]
+    assert body not in json.dumps(result,ensure_ascii=False)
+    exported=client.get(f"/evidence-reviews/book/chapters/1/drafts/{digest}/export")
+    assert exported.status_code==200 and exported.text==body
+    assert "attachment" in exported.headers["content-disposition"]
+    assert client.get(f"/evidence-reviews/other/chapters/1/drafts/{digest}/export").status_code==404
+    assert client.get("/evidence-reviews/book/chapters/1/drafts/not-a-hash/export").status_code==422
+    assert client.get("/evidence-reviews/other/operations").json()["chapter_progress"]==[]
+
+
 def test_retry_rejects_changed_manuscript_and_wrong_book(api,journal):
     client,manager,store=api
     job=manager.start("book",1,lambda p,c:(_ for _ in ()).throw(ValueError("fixture")),request={"content_hash":"old"})
