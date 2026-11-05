@@ -50,6 +50,42 @@ class BrowserFixtureModel:
                           "fixture-test-only", 111, 42)
 
 
+def browser_aftermath_pipeline(db):
+    """Test-only model and durable pipeline; never use user profiles or a network."""
+    from types import SimpleNamespace
+    from application.engine.services.chapter_aftermath_pipeline import ChapterAftermathPipeline
+    from application.ai.durable_calls import durable_stage
+    from application.engine.services.durable_aftermath import effect
+    from infrastructure.ai.provider_factory import DynamicLLMService
+    from infrastructure.ai.config.settings import Settings
+    from domain.ai.services.llm_service import GenerationResult, GenerationConfig
+    from domain.ai.value_objects.token_usage import TokenUsage
+    from domain.ai.value_objects.prompt import Prompt
+    from infrastructure.persistence.database.sqlite_chapter_repository import SqliteChapterRepository
+    class Provider:
+        settings = Settings(api_key='fixture', default_model='fixture-aftermath-only')
+        async def generate(self, prompt, config):
+            await asyncio.sleep(.1)
+            return GenerationResult('浏览器章后测试结果，非真实模型', TokenUsage(20,10))
+    llm = DynamicLLMService()
+    async def resolve():
+        return Provider()
+    llm._resolve_provider = resolve
+    class Pipeline(ChapterAftermathPipeline):
+        async def _run_after_chapter_saved_legacy(self, novel_id, number, **payload):
+            async def run():
+                await llm.generate(Prompt(system='fixture', user='aftermath'), GenerationConfig(model='fixture-aftermath-only', max_tokens=64))
+                effect('browser_projection', lambda: None)
+                return {'narrative_sync_ok': True, 'fixture': True}
+            return await durable_stage('narrative_sync', run)
+        async def _run_auxiliary_stages(self, novel, number, content, result):
+            async def run():
+                effect('browser_auxiliary', lambda: None)
+                return {}
+            await durable_stage('aux_fixture', run)
+    return Pipeline(None, None, llm, chapter_repository=SqliteChapterRepository(db))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8011)
@@ -81,6 +117,16 @@ def main():
     evidence_model_client.configured_model = lambda control: {"configured": True, "model": "fixture-test-only", "protocol": "openai", "host": "fixture", "message": "仅用于浏览器测试，非真实模型"}
     routes.get_ai_review_service = lambda store: AIEvidenceReviewService(store, HistoricalRetriever(store), BrowserFixtureModel())
     from interfaces.main import app
+    from interfaces.api import dependencies
+    from infrastructure.persistence.database.aftermath_task_store import AftermathTaskStore
+    pipeline = browser_aftermath_pipeline(db)
+    app.dependency_overrides[dependencies.get_chapter_aftermath_pipeline] = lambda: pipeline
+    dependencies.get_chapter_aftermath_pipeline = lambda: pipeline
+    tasks = AftermathTaskStore(db)
+    chapter_task = tasks.enqueue('ai-browser-fixture', 2, '沈澜抬起左臂，指向远方。')
+    tasks.claim('ai-browser-fixture', chapter_task['id'], 'fixture-owner')
+    tasks.begin_request(chapter_task['id'], 'narrative_sync', 0, 1)
+    tasks.finish(chapter_task['id'], 'fixture-owner', 'waiting_confirmation', '浏览器测试：模型请求结果未留存，需确认后恢复')
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 

@@ -34,6 +34,11 @@ class HostedWriteService:
         """与 HTTP 保存同源：叙事/向量、文风、KG（不阻塞 SSE）；三元组与伏笔在叙事同步单次 LLM 中落库。"""
         if not self._aftermath or not content.strip():
             return
+        store = self._aftermath.task_store() if hasattr(type(self._aftermath), "task_store") else None
+        if store is not None:
+            # Persist before returning the SSE completion. The worker verifies
+            # saved text before any remote request; later recovery keeps the job.
+            store.enqueue(novel_id, chapter_number, content)
 
         async def _run() -> None:
             try:

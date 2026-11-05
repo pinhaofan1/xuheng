@@ -32,6 +32,9 @@ flowchart LR
 | `infrastructure/persistence/database/evidence_review_store.py` | 关系数据、快照、索引、反馈、写入确认 |
 | `infrastructure/persistence/operation_journal.py` | 独立运行账本、原子预留、累计及按日预算检查 |
 | `infrastructure/persistence/usage_ledger.py` | IANA 时区日期边界、模型汇总、追加式账单核对与差额 |
+| `infrastructure/persistence/database/aftermath_task_store.py` | 主库中的章后任务、心跳、模型请求结果和恢复决定 |
+| `application/engine/services/durable_aftermath.py` | 正文版本校验、阶段复用、辅助队列恢复及写入完成标记 |
+| `application/ai/durable_calls.py` | 按业务调用角色缓存分析结果；未确认请求禁止自动重发 |
 | `interfaces/api/v1/audit/evidence_review_routes.py` | 审校、检索、模型状态、任务、历史、导出 API |
 | `frontend/src/views/EvidenceReview.vue` | 核对、检索、轮询、原文高亮、反馈与导出 |
 
@@ -78,7 +81,12 @@ flowchart LR
 | PUT | `/{novel}/operations/policy` | 累计/每日限额、IANA 时区及模型单价 |
 | GET | `/{novel}/operations/calls/{call}/reconciliations` | 作品范围内请求的全部核对历史 |
 | POST | `/{novel}/operations/calls/{call}/reconciliations` | 按 request_key 幂等追加核对，expected_revision 防止覆盖新版本 |
+| POST | `/{novel}/operations/aftermath/{task}/resume` | 正文校验后排队恢复；未知请求须确认并填写说明，可明确请求未写入阶段的新模型结果 |
 
 404 为作品边界内未找到，409 为输入或反馈冲突，422 为不支持输入，503 为不可用或写入未确认。
 
 运行记录库通过 `usage_calls` 视图合并原请求与最新核对；`calls` 保留原请求，`call_adjustments` 追加前后快照、依据和差额。累计、每日与模型汇总、请求前检查均读取同一有效视图。预留和核对使用 `BEGIN IMMEDIATE`，统计使用同一读事务。未知金额与用量不转成零；核对可明确填写零值。每日窗口以 IANA 时区的相邻两个本地零点换算 UTC，覆盖夏令时；请求以发起日归属，日限额拦截附有到期时间，不自动恢复任务。当前为单个本地 API 进程；本轮只串行化本进程的账本初始化，不提供多执行进程任务协调。
+
+章后任务使用主库的 `xh_aftermath_tasks/steps/requests/resumes`，以作品、章节、正文哈希去重。图谱、伏笔、债务、道具、辅助快照等标记的本地步骤，使用独立短事务与完成标记共同提交；仓储在该上下文内加入同一连接，嵌套提交不提前结束事务，写 SQL 失败即使被旧代码捕获也会回滚。该上下文禁止模型/检索请求，不持写事务等待网络。普通正文写队列的调用方式保持原有行为。
+
+分析模型结果在返回业务解析前留存；缓存按业务调用角色区分，避免恢复时可选分支变化拿错结果。失去心跳后，有未确认请求的任务进入等待确认，其余可继续排队；完成阶段和本地步骤均复用。API 启动扫描负责恢复辅助尾部，旧纯内存队列只保留作无真实数据库依赖的兼容路径。没有实现跨库全局事务或所有调度器的多进程协调；F03/F15 单独验收。

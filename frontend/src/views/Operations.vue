@@ -4,7 +4,7 @@ import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
 import WorkspaceNav from '@/components/layout/WorkspaceNav.vue'
 import AppIcon from '@/components/layout/AppIcon.vue'
-import { operationsApi, type Operations, type UsagePolicy, type ModelCall, type Reconciliation } from '@/api/operations'
+import { operationsApi, type Operations, type UsagePolicy, type ModelCall, type Reconciliation, type AftermathTask } from '@/api/operations'
 import { evidenceReviewApi, type ReviewJob } from '@/api/evidenceReview'
 import { formatApiError } from '@/utils/apiError'
 
@@ -31,6 +31,14 @@ const reconcileDraft = ref({input_tokens: null as number | null, output_tokens: 
   billed_cost: null as number | null, note: '', reference: '', request_finished: false})
 const reconciliationBaseline = ref('')
 const reconciliationKey = ref('')
+const aftermathOpen = ref(false)
+const aftermathTask = ref<AftermathTask | null>(null)
+const aftermathNote = ref('')
+const aftermathRetryModels = ref(false)
+const aftermathSaving = ref(false)
+const aftermathError = ref('')
+const aftermathBook = ref('')
+const aftermathStatuses: Record<string,string> = {queued:'等待处理',running:'处理中',completed:'已完成',failed:'待恢复',waiting_confirmation:'需要确认',stale:'正文已变化'}
 const reconciliationDirty = computed(() => reconciliationOpen.value && JSON.stringify(reconcileDraft.value) !== reconciliationBaseline.value)
 const reconciliationValid = computed(() => Number.isSafeInteger(reconcileDraft.value.input_tokens) && Number.isSafeInteger(reconcileDraft.value.output_tokens)
   && (reconcileDraft.value.input_tokens ?? -1) >= 0 && (reconcileDraft.value.output_tokens ?? -1) >= 0
@@ -71,6 +79,22 @@ async function load(initial = false) {
     if (initial) { draft.value = structuredClone(result.policy); saved.value = JSON.stringify(result.policy) }
   } catch (e) { if (id === sequence && !disposed) error.value = formatApiError(e, '读取任务记录失败，请重试') }
   finally { if (id === sequence && !disposed) timer = setTimeout(() => void load(), 5000) }
+}
+function openAftermath(task: AftermathTask) {
+  aftermathTask.value = {...task}; aftermathBook.value = novel.value
+  aftermathNote.value = ''; aftermathRetryModels.value = false; aftermathError.value = ''; aftermathOpen.value = true
+}
+async function resumeAftermath() {
+  if (!aftermathTask.value || aftermathBook.value !== novel.value) return
+  aftermathSaving.value = true; aftermathError.value = ''
+  try {
+    await operationsApi.resumeAftermath(aftermathBook.value, aftermathTask.value.id, {
+      confirm_unknown: !!aftermathTask.value.unknown_requests && aftermathRetryModels.value,
+      retry_model_calls: !aftermathTask.value.unknown_requests && aftermathRetryModels.value, note: aftermathNote.value,
+    })
+    aftermathOpen.value = false; message.success('章后任务已加入恢复队列，已完成步骤将复用'); await load()
+  } catch (e) { aftermathError.value = formatApiError(e, '恢复失败，处理说明已保留') }
+  finally { aftermathSaving.value = false }
 }
 async function openReconciliation(call: ModelCall) {
   reconciliationCall.value = {...call}
@@ -140,11 +164,11 @@ function retry(job: ReviewJob) {
   })
 }
 onBeforeRouteLeave(() => {
-  if (reconciling.value) return false
+  if (reconciling.value || aftermathSaving.value) return false
   if (!dirty.value && !reconciliationDirty.value) return true
   return new Promise<boolean>(resolve => dialog.warning({ title: dirty.value ? '预算尚未保存' : '账单核对尚未保存', content: '离开将放弃本次未保存修改。', positiveText: '放弃修改', negativeText: '继续编辑', onPositiveClick: () => resolve(true), onNegativeClick: () => resolve(false), onClose: () => resolve(false), onMaskClick: () => resolve(false) }))
 })
-watch(novel, () => { data.value = null; saved.value = ''; reportDay.value = ''; offset.value = 0; reconciliationOpen.value = false; policyOpen.value = false; reconciliationKey.value = ''; void load(true) }, { immediate: true })
+watch(novel, () => { data.value = null; saved.value = ''; reportDay.value = ''; offset.value = 0; reconciliationOpen.value = false; aftermathOpen.value = false; policyOpen.value = false; reconciliationKey.value = ''; void load(true) }, { immediate: true })
 onBeforeUnmount(() => { disposed = true; ++sequence; clearTimeout(timer) })
 </script>
 
@@ -184,6 +208,15 @@ onBeforeUnmount(() => { disposed = true; ++sequence; clearTimeout(timer) })
             <div class="job-actions"><router-link v-if="job.status === 'completed'" :to="`/book/${novel}/review/${job.number}?mode=ai&run=${job.run_id}`">查看结果 →</router-link><n-button v-else-if="active(job)" size="small" :disabled="job.cancel_requested || pending === job.id" @click="cancel(job)">请求取消</n-button><n-button v-else size="small" :disabled="!!pending" @click="retry(job)">重新发起</n-button></div>
           </article>
         </section>
+        <section class="operations-section aftermath-section">
+          <div class="section-heading"><div><h2>章后处理任务</h2><p>按正文版本留存叙事、图谱与辅助处理。重启后继续已排队任务，已保存的模型结果与写入不会重复执行。</p></div></div>
+          <p v-if="!data.aftermath_tasks?.length" class="table-empty">暂无章后处理任务。保存正文或托管收稿后会在这里记录。</p>
+          <article v-for="task in data.aftermath_tasks" :key="task.id" class="job-row aftermath-task">
+            <span class="job-status" :class="task.status">{{ task.stale ? '旧版本' : aftermathStatuses[task.status] || task.status }}</span>
+            <div class="job-body"><h3>第 {{ task.number }} 章 · {{ task.phase === 'core' ? '叙事与知识同步' : '章后辅助处理' }}</h3><p v-if="task.stale">正文已修改或删除，此任务不会继续写入，请按当前正文重新处理。</p><p v-else-if="task.error" class="job-error">{{ task.error }}</p><p v-if="task.unknown_requests && !task.stale" class="job-error">{{ task.unknown_requests }} 个请求的结果未能确认，可能已经计费；不会自动重新请求。</p><small>已留存 {{ task.steps.filter(s => s.startsWith('stage:')).length }} 个阶段 · {{ time(task.updated_at) }}</small><details v-if="task.confirmations.length" class="aftermath-confirmations"><summary>恢复处理记录（{{ task.confirmations.length }}）</summary><p v-for="(record,index) in task.confirmations" :key="index">{{ time(record.created_at) }} · {{ record.confirmed_unknown ? '已确认未留存请求的处理' : '复用已有结果继续' }}<br />{{ record.note }}</p></details></div>
+            <div class="job-actions"><n-button v-if="!task.stale && ['failed','waiting_confirmation'].includes(task.status)" size="small" @click="openAftermath(task)">处理并恢复</n-button><span v-else-if="['queued','running'].includes(task.status) && !task.stale" class="budget-help">后台处理中</span></div>
+          </article>
+        </section>
         <section class="operations-section">
           <div class="section-heading"><div><h2>托管章节检查点</h2><p>保存正文与章后步骤的完成记录。中断后从创作工作台手动恢复，已完成步骤按正文版本复用。</p></div></div>
           <p v-if="!data.chapter_progress?.length" class="table-empty">暂无章节检查点。新版托管保存正文后会在这里记录。</p>
@@ -202,6 +235,10 @@ onBeforeUnmount(() => { disposed = true; ++sequence; clearTimeout(timer) })
       </template>
       <n-skeleton v-else-if="!error" text :repeat="8" />
     </main>
+    <n-modal v-model:show="aftermathOpen" preset="card" title="恢复章后处理" :style="{width:'min(560px, calc(100vw - 32px))'}" :mask-closable="false" :close-on-esc="false" :closable="!aftermathSaving">
+      <template v-if="aftermathTask"><p class="budget-help">第 {{ aftermathTask.number }} 章 · 已完成的阶段及本地写入会复用。恢复可能继续尚未发起的模型请求，仍受作品预算限制；不会重新生成正文。</p><n-alert v-if="aftermathTask.unknown_requests" type="warning" title="先核对可能已计费的请求">有 {{ aftermathTask.unknown_requests }} 个请求未留存可恢复结果。请先核对服务商用量，再明确决定是否重新请求。</n-alert><n-alert v-if="aftermathError" type="error" class="operations-alert">{{ aftermathError }}</n-alert><n-form label-placement="top" style="margin-top:20px"><n-form-item label="处理说明"><n-input v-model:value="aftermathNote" type="textarea" :input-props="{'aria-label':'章后恢复处理说明'}" maxlength="1000" placeholder="记录已核对的请求、配置修复或处理依据，不要填写密钥" /></n-form-item><n-checkbox v-model:checked="aftermathRetryModels">{{ aftermathTask.unknown_requests ? '我已核对用量，确认重新请求未留存结果的步骤，可能再次计费' : '重新请求未写入数据阶段的模型结果，可能再次计费' }}</n-checkbox></n-form><p class="budget-help">默认使用已保存的模型结果。若已有本地写入，只补做剩余步骤；修改了正文的旧任务不会恢复。</p></template>
+      <template #footer><div class="operations-actions" style="justify-content:flex-end"><n-button :disabled="aftermathSaving" @click="aftermathOpen = false">暂不恢复</n-button><n-button type="primary" :loading="aftermathSaving" :disabled="!!(aftermathTask?.unknown_requests && !aftermathRetryModels) || (aftermathRetryModels && !aftermathNote.trim())" @click="resumeAftermath">确认恢复章后处理</n-button></div></template>
+    </n-modal>
     <n-drawer v-model:show="policyOpen" width="min(660px, 100vw)" placement="right" class="budget-drawer">
       <n-drawer-content title="作品预算" :body-content-style="{padding:'24px'}" closable>
         <n-alert type="info" :bordered="false">累计与每日上限同时生效，清空表示不限，填 0 表示禁止新的模型请求。修改预算不会清除历史用量。</n-alert>

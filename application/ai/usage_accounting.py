@@ -91,6 +91,14 @@ def usage_scope(novel_id, journal=None, operation=""):
 
 class ModelCall:
     def __init__(self, kind, model, text, output_bound=0, novel_id="", operation=""):
+        from application.ai.durable_calls import current_work
+        from infrastructure.persistence.database.atomic_effect import binding_for
+        bound = binding_for()
+        if bound is not None:
+            bound.failure = RuntimeError("本地章后事务内不允许远端模型或检索请求")
+            raise bound.failure
+        work = current_work.get()
+        work_key = work.charge_key() if work is not None else None
         self.id = None
         scope = _scope.get()
         if scope is None and novel_id:
@@ -103,7 +111,14 @@ class ModelCall:
                 self.journal = get_operation_journal()
             # UTF-8 bytes plus framing are a conservative local estimate. It is
             # not a provider tokenizer or a guarantee against provider overbilling.
-            self.id = self.journal.reserve(novel, kind, model, len(text.encode("utf-8"))+512, output_bound, label)
+            try:
+                self.id = self.journal.reserve(novel, kind, model, len(text.encode("utf-8"))+512, output_bound, label)
+            except BaseException:
+                if work is not None:
+                    work.store.finish_request(work.task["id"], *work_key, "failed")
+                raise
+            if work is not None:
+                work.charge(self.id, work_key)
 
     def finish(self, input_tokens=None, output_tokens=None):
         if self.id:

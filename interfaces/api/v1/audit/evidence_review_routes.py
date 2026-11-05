@@ -213,6 +213,9 @@ def operations(novel_id: str, day: str | None = Query(default=None, pattern=r"^\
             row["draft_available"] = bool(row["draft_available"])
             row["uncommitted"] = row["stage"] == "saving" and row["stale"] and row["draft_available"]
         result["chapter_progress"] = rows
+        from infrastructure.persistence.database.aftermath_task_store import AftermathTaskStore
+        tasks = AftermathTaskStore(service.store.db)
+        result["aftermath_tasks"] = tasks.list(novel_id)
         return result
     return _call(operation)
 
@@ -233,6 +236,30 @@ class ReconcileUsage(BaseModel):
         if not self.request_finished:
             raise ValueError("请先确认已在服务商核实此请求结束")
         return self
+
+
+class ResumeAftermath(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    confirm_unknown: bool = Field(default=False, strict=True)
+    retry_model_calls: bool = Field(default=False, strict=True)
+    note: str = Field(default="", max_length=1000)
+
+
+@router.post("/{novel_id}/operations/aftermath/{task_id}/resume")
+def resume_aftermath(novel_id: str, task_id: str, request: ResumeAftermath,
+                     service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    from infrastructure.persistence.database.aftermath_task_store import AftermathTaskStore, TaskConflict
+    def operation():
+        service.store.require_novel(novel_id)
+        store = AftermathTaskStore(service.store.db)
+        try:
+            store.resume(novel_id, task_id, request.confirm_unknown, request.note, request.retry_model_calls)
+            return store.get(novel_id, task_id)
+        except KeyError as exc:
+            raise ReviewNotFound("未找到该作品的章后任务") from exc
+        except TaskConflict as exc:
+            raise ReviewConflict(str(exc)) from exc
+    return _call(operation)
 
 
 @router.get("/{novel_id}/operations/calls/{call_id}/reconciliations")

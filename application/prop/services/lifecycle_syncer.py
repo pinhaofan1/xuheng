@@ -80,12 +80,24 @@ class PropLifecycleSyncer:
             self._safe_extract(ext, novel_id, chapter_number, content, props_input)
             for ext in self._extractors
         ]
-        results = await asyncio.gather(*tasks)
+        from application.ai.durable_calls import current_work
+        results = [await task for task in tasks] if current_work.get() is not None else await asyncio.gather(*tasks)
         for evts in results:
             all_events.extend(evts)
 
         deduped = self._deduplicate(all_events)
 
+        if current_work.get() is not None:
+            from application.engine.services.durable_aftermath import effect
+            applied = await asyncio.to_thread(lambda: effect("props_apply", lambda: asyncio.run(self._apply_events(deduped, candidate_props))))
+        else:
+            applied = await self._apply_events(deduped, candidate_props)
+        return {
+            "novel_id": novel_id, "chapter": chapter_number,
+            "props_checked": len(candidate_props), "events_extracted": len(all_events), "events_applied": applied,
+        }
+
+    async def _apply_events(self, deduped, candidate_props):
         prop_map: Dict[str, Prop] = {p.id.value: p for p in candidate_props}
         applied = 0
         for event in deduped:
@@ -114,13 +126,7 @@ class PropLifecycleSyncer:
                     "[PropSync] 事件应用失败 prop=%s: %s", event.prop_id, e
                 )
 
-        return {
-            "novel_id": novel_id,
-            "chapter": chapter_number,
-            "props_checked": len(candidate_props),
-            "events_extracted": len(all_events),
-            "events_applied": applied,
-        }
+        return applied
 
     async def _safe_extract(
         self,

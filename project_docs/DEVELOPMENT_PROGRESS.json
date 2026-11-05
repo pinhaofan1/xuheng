@@ -1,5 +1,5 @@
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "updated_at": "2026-11-05",
   "next_order": [
     "F04",
@@ -19,10 +19,10 @@
     "F15"
   ],
   "baseline": {
-    "unit_passed": 1762,
+    "unit_passed": 1782,
     "unit_skipped": 7,
-    "browser_passed": 13,
-    "evidence": "project_docs/RELEASE_0.8.md"
+    "browser_passed": 14,
+    "evidence": "project_docs/RELEASE_0.9.md"
   },
   "items": [
     {
@@ -176,10 +176,13 @@
       "group": "next",
       "priority": "P0",
       "title": "章后辅助任务持久化与幂等",
-      "status": "todo",
+      "status": "done",
       "kind": "feature",
       "acceptance": "辅助任务重启可继续；同一正文版本重复恢复不重复写图谱、伏笔或债务；未知计费请求需要确认后处理。",
-      "evidence": []
+      "evidence": [
+        "project_docs/RELEASE_0.9.md"
+      ],
+      "completed_at": "2026-11-05"
     },
     {
       "id": "F03",

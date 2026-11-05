@@ -685,6 +685,9 @@ class ChapterBridgeService:
     # 持久化
     # ------------------------------------------------------------------
 
+    from application.ai.durable_calls import durable_effect
+
+    @durable_effect("bridge_apply")
     def _save_bridge(self, novel_id: str, chapter_number: int, bridge: ChapterBridge):
         """持久化桥段到 DB"""
         if not self._db_path:

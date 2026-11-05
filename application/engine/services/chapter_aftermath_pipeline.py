@@ -20,6 +20,8 @@ import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from domain.ai.services.llm_service import LLMService
+from application.ai.durable_calls import current_work, durable_stage
+from application.engine.services.durable_aftermath import effect
 
 if TYPE_CHECKING:
     from application.world.services.knowledge_service import KnowledgeService
@@ -35,7 +37,7 @@ async def _timed_aftermath_stage(
 ) -> Any:
     started = time.perf_counter()
     try:
-        return await work()
+        return await durable_stage(stage, work)
     finally:
         elapsed = time.perf_counter() - started
         logger.info(
@@ -118,7 +120,7 @@ async def infer_kg_from_chapter(novel_id: str, chapter_number: int) -> None:
         from infrastructure.persistence.database.story_node_repository import StoryNodeRepository
         from application.world.services.knowledge_graph_service import KnowledgeGraphService
 
-        db_path = get_db_path()
+        db_path = current_work.get().store.db.db_path if current_work.get() is not None else get_db_path()
         kr = SqliteKnowledgeRepository(get_database())
         story_node_id = kr.find_story_node_id_for_chapter_number(novel_id, chapter_number)
         if not story_node_id:
@@ -184,7 +186,39 @@ class ChapterAftermathPipeline:
         self._evolution_snapshot_service = evolution_snapshot_service
         self._character_kernel = character_narrative_kernel
 
+    def task_store(self):
+        from infrastructure.persistence.database.aftermath_task_store import AftermathTaskStore
+        db = getattr(self._chapter_repository, "db", None)
+        if not isinstance(getattr(db, "db_path", None), str):
+            db = getattr(getattr(self._knowledge, "knowledge_repository", None), "db", None)
+        return AftermathTaskStore(db) if isinstance(getattr(db, "db_path", None), str) else None
+
+    async def prepare_after_save(self, novel_id, number, content, micro_beats=None, voice_result=None):
+        store = self.task_store()
+        if store is None or not content.strip():
+            return None
+        from infrastructure.persistence.database.aftermath_task_store import TaskStale
+        for attempt in range(51):
+            try:
+                return store.enqueue(novel_id, number, content, micro_beats, voice_result)
+            except TaskStale:
+                if attempt == 50:
+                    raise
+                await asyncio.sleep(.1)
+
     async def run_after_chapter_saved(
+        self, novel_id: str, chapter_number: int, content: str,
+        chapter_micro_beats=None, voice_result=None,
+    ) -> Dict[str, Any]:
+        store = self.task_store()
+        if store is None or not content.strip():
+            return await self._run_after_chapter_saved_legacy(novel_id, chapter_number, content, chapter_micro_beats, voice_result)
+        from application.engine.services.durable_aftermath import DurableAftermath
+        task = await self.prepare_after_save(novel_id, chapter_number, content, chapter_micro_beats, voice_result)
+        result = await DurableAftermath(store, store.get(novel_id, task["id"], private=True)).execute(self, wait=True)
+        return result
+
+    async def _run_after_chapter_saved_legacy(
         self,
         novel_id: str,
         chapter_number: int,
@@ -232,6 +266,8 @@ class ChapterAftermathPipeline:
             out["bridge_extracted"] = True
         except Exception as e:
             logger.warning("章节桥段提取失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
+            if current_work.get() is not None:
+                return out
 
         # 1) 叙事 + 向量 + 故事线 + 张力 + 对话 + 因果边 + 人物状态 + 债务
         try:
@@ -283,16 +319,18 @@ class ChapterAftermathPipeline:
             logger.warning(
                 "叙事同步/向量失败 novel=%s ch=%s: %s", novel_id, chapter_number, e
             )
+            if current_work.get() is not None:
+                return out
 
         # 1b) 角色叙事内核对账：cast plan vs 正文，自动投影状态与风险。
         try:
             if self._character_kernel:
-                reconcile = self._character_kernel.reconcile_after_chapter(
+                reconcile = effect("character_reconcile", lambda: self._character_kernel.reconcile_after_chapter(
                     novel_id,
                     chapter_number,
                     content,
                     None,
-                )
+                ))
                 out["character_reconcile_ok"] = bool(reconcile.get("checked"))
                 out["character_reconcile"] = reconcile
         except Exception as e:
@@ -346,7 +384,8 @@ class ChapterAftermathPipeline:
                 logger.warning("文风评分失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
 
         out["auxiliary_deferred"] = True
-        self._schedule_auxiliary_stages(novel_id, chapter_number, content, dict(out))
+        if current_work.get() is None:
+            self._schedule_auxiliary_stages(novel_id, chapter_number, content, dict(out))
 
         return out
 
@@ -381,179 +420,82 @@ class ChapterAftermathPipeline:
             _job,
         )
 
-    async def _run_auxiliary_stages(
-        self,
-        novel_id: str,
-        chapter_number: int,
-        content: str,
-        evidence: Dict[str, Any],
-    ) -> None:
-        # 3) 结构树 KG 推断
-        await infer_kg_from_chapter(novel_id, chapter_number)
+    async def _run_auxiliary_stages(self, novel_id, chapter_number, content, evidence):
+        async def kg():
+            await asyncio.to_thread(lambda: effect("kg_apply", lambda: asyncio.run(infer_kg_from_chapter(novel_id, chapter_number))))
+            return {}
 
-        # 4) 质量护栏（建议模式）+ 快照落库 + 溯源（与手动 POST /guardrail/check 同源）
-        try:
+        async def guardrail():
             import uuid
             from datetime import datetime, timezone
-
             from application.engine.services.guardrail_execution import run_guardrail_advise_sync
             from engine.core.ports.ports import TraceRecord
             from engine.infrastructure.persistence.trace_store import SqliteTraceStore
-            from infrastructure.persistence.database.chapter_guardrail_snapshot_repository import (
-                ChapterGuardrailSnapshotRepository,
-            )
+            from infrastructure.persistence.database.chapter_guardrail_snapshot_repository import ChapterGuardrailSnapshotRepository
             from infrastructure.persistence.database.connection import get_database
-
-            t0 = time.perf_counter()
-            dto = await asyncio.to_thread(
-                run_guardrail_advise_sync,
-                novel_id,
-                content,
-                f"第{chapter_number}章（保存后自动）",
-            )
-            elapsed_ms = int((time.perf_counter() - t0) * 1000)
-            evidence["guardrail_passed"] = bool(dto.get("passed"))
-            evidence["guardrail_score"] = dto.get("overall_score")
-
-            db = get_database()
-            repo = ChapterGuardrailSnapshotRepository(db)
-            await asyncio.to_thread(repo.upsert, novel_id, chapter_number, dto)
-
-            vsummary: list[str] = []
-            for v in dto.get("violations") or []:
-                if isinstance(v, dict) and v.get("description"):
-                    vsummary.append(str(v["description"])[:120])
-                if len(vsummary) >= 20:
-                    break
-
-            store = SqliteTraceStore(db)
+            started = time.perf_counter()
+            dto = await asyncio.to_thread(run_guardrail_advise_sync, novel_id, content, f"第{chapter_number}章（保存后自动）")
             trace = TraceRecord(
-                trace_id=str(uuid.uuid4()),
-                node_type="guardrail",
-                operation="chapter_after_save",
+                trace_id=str(uuid.uuid4()), node_type="guardrail", operation="chapter_after_save",
                 input_summary=f"{novel_id} ch{chapter_number} len={len(content)}"[:200],
-                output_summary=(
-                    f"passed={dto.get('passed')} score={dto.get('overall_score')} "
-                    f"viol={len(dto.get('violations') or [])}"
-                )[:200],
-                score=float(dto.get("overall_score") or 0.0),
-                violations=vsummary,
-                duration_ms=elapsed_ms,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                novel_id=novel_id,
-            )
-            await store.record(trace)
-        except Exception as e:
-            logger.warning("自动护栏/溯源失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
+                output_summary=f"passed={dto.get('passed')} score={dto.get('overall_score')}"[:200],
+                score=float(dto.get("overall_score") or 0),
+                violations=[str(v.get("description", ""))[:120] for v in (dto.get("violations") or [])[:20] if isinstance(v, dict)],
+                duration_ms=int((time.perf_counter()-started)*1000), timestamp=datetime.now(timezone.utc).isoformat(), novel_id=novel_id)
+            async def persist():
+                db = get_database()
+                ChapterGuardrailSnapshotRepository(db).upsert(novel_id, chapter_number, dto)
+                await SqliteTraceStore(db).record(trace)
+            await asyncio.to_thread(lambda: effect("guardrail_apply", lambda: asyncio.run(persist())))
+            return {"guardrail_passed": bool(dto.get("passed")), "guardrail_score": dto.get("overall_score")}
 
-        # 5) 叙事治理层：结构治理报告与严重问题暂停闸门（质量护栏之外的整书治理）
-        try:
+        async def governance():
             from application.governance.service import NarrativeGovernanceService
             from infrastructure.persistence.database.connection import get_database
-            from infrastructure.persistence.database.sqlite_governance_repository import (
-                SqliteGovernanceRepository,
-            )
-            from infrastructure.persistence.database.sqlite_storyline_repository import (
-                SqliteStorylineRepository,
-            )
+            from infrastructure.persistence.database.sqlite_governance_repository import SqliteGovernanceRepository
+            from infrastructure.persistence.database.sqlite_storyline_repository import SqliteStorylineRepository
             from interfaces.api.dependencies import get_novel_repository
+            def commit():
+                db = get_database()
+                service = NarrativeGovernanceService(SqliteGovernanceRepository(db), get_novel_repository(), SqliteStorylineRepository(db), db)
+                report = service.commit_chapter(novel_id, chapter_number, content, dict(evidence))
+                return {"governance_report": report.to_dict(), "governance_severity": report.severity, "governance_should_pause": report.should_pause_autopilot}
+            return await asyncio.to_thread(lambda: effect("governance_apply", commit))
 
-            db = get_database()
-            governance = NarrativeGovernanceService(
-                SqliteGovernanceRepository(db),
-                get_novel_repository(),
-                SqliteStorylineRepository(db),
-                db,
-            )
-            report = await asyncio.to_thread(
-                governance.commit_chapter,
-                novel_id,
-                chapter_number,
-                content,
-                dict(evidence),
-            )
-            evidence["governance_report"] = report.to_dict()
-            evidence["governance_severity"] = report.severity
-            evidence["governance_should_pause"] = report.should_pause_autopilot
-        except Exception as e:
-            logger.warning("叙事治理评估失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
+        async def evolution():
+            if not self._evolution_snapshot_service:
+                return {}
+            def commit():
+                snapshot = self._evolution_snapshot_service.build_after_chapter_saved(novel_id, chapter_number, content, "main", dict(evidence))
+                return {"evolution_snapshot_ok": snapshot.status == "active", "evolution_snapshot_id": snapshot.snapshot_id}
+            return await asyncio.to_thread(lambda: effect("evolution_apply", commit))
 
-        # 6) 故事演进硬状态快照 — 只消费 evidence，不把 read model 当真源
-        try:
-            if self._evolution_snapshot_service:
-                snapshot = await asyncio.to_thread(
-                    self._evolution_snapshot_service.build_after_chapter_saved,
-                    novel_id,
-                    chapter_number,
-                    content,
-                    "main",
-                    dict(evidence),
-                )
-                evidence["evolution_snapshot_ok"] = snapshot.status == "active"
-                evidence["evolution_snapshot_id"] = snapshot.snapshot_id
-                logger.debug(
-                    "[Evolution] snapshot novel=%s ch=%s id=%s status=%s",
-                    novel_id,
-                    chapter_number,
-                    snapshot.snapshot_id,
-                    snapshot.status,
-                )
-        except Exception as e:
-            logger.warning("[Evolution] 快照创建失败（非致命）novel=%s ch=%s: %s", novel_id, chapter_number, e)
+        async def worldline():
+            if not self._unified_checkpoint:
+                return {}
+            id = await asyncio.to_thread(lambda: effect("worldline_apply", lambda: self._unified_checkpoint.create_checkpoint(
+                novel_id, "CHAPTER", f"第{chapter_number}章自动快照", None, "main", None, {"chapter": chapter_number})))
+            return {"worldline_checkpoint_id": id}
 
-        # 7) 世界线快照 — 章节完成后自动打 CHAPTER checkpoint
-        try:
-            if self._unified_checkpoint:
-                cp_id = await asyncio.to_thread(
-                    self._unified_checkpoint.create_checkpoint,
-                    novel_id,
-                    "CHAPTER",
-                    f"第{chapter_number}章自动快照",
-                    None,
-                    "main",
-                    None,
-                    {"chapter": chapter_number},
-                )
-                evidence["worldline_checkpoint_id"] = cp_id
-                logger.debug("[Worldline] CHAPTER checkpoint novel=%s ch=%s id=%s", novel_id, chapter_number, cp_id)
-        except Exception as e:
-            logger.warning("[Worldline] 自动 checkpoint 失败（非致命）novel=%s ch=%s: %s", novel_id, chapter_number, e)
+        async def props():
+            if not self._prop_syncer:
+                return {}
+            return {"prop_sync": await self._prop_syncer.sync(novel_id, chapter_number, content)}
 
-        # 8) 道具生命周期同步 — 事件提取、状态机转换、知识库三元组
-        try:
-            if self._prop_syncer:
-                sync_result = await self._prop_syncer.sync(novel_id, chapter_number, content)
-                evidence["prop_sync"] = sync_result
-                logger.debug(
-                    "[PropSync] 完成 novel=%s ch=%s result=%s",
-                    novel_id,
-                    chapter_number,
-                    sync_result,
-                )
-        except Exception as e:
-            logger.warning(
-                "[PropSync] 失败（非致命）novel=%s ch=%s: %s", novel_id, chapter_number, e
-            )
+        async def confluence():
+            from interfaces.api.dependencies import get_confluence_point_repository
+            hits = [cp.id for cp in get_confluence_point_repository().get_by_novel_id(novel_id) if cp.target_chapter == chapter_number and not cp.resolved]
+            return {"confluence_points": hits}
 
-        # ── 汇流点到达检查 ──
-        try:
-            from interfaces.api.dependencies import get_confluence_point_repository as _get_cp_repo
-            _confluence_repo = _get_cp_repo()
-            _hit_cps = [
-                cp for cp in _confluence_repo.get_by_novel_id(novel_id)
-                if cp.target_chapter == chapter_number and not cp.resolved
-            ]
-            if _hit_cps:
-                for _cp in _hit_cps:
-                    logger.info(
-                        "[汇流点] 第%d章完成，汇流点 %s (source=%s → target=%s) 建议标记为 resolved",
-                        chapter_number,
-                        _cp.id,
-                        _cp.source_storyline_id,
-                        _cp.target_storyline_id,
-                    )
-        except Exception as _cp_err:
-            logger.warning("汇流点检查失败（非致命）: %s", _cp_err)
+        for name, operation in [("kg", kg), ("guardrail", guardrail), ("governance", governance),
+                                ("evolution", evolution), ("worldline", worldline), ("props", props), ("confluence", confluence)]:
+            try:
+                result = await durable_stage("aux_"+name, operation)
+                evidence.update(result or {})
+            except Exception:
+                if current_work.get() is not None:
+                    raise
+                logger.warning("辅助阶段失败 stage=%s novel=%s ch=%s", name, novel_id, chapter_number, exc_info=True)
 
     async def _extract_chapter_bridge(
         self,

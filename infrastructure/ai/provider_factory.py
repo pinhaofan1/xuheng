@@ -26,6 +26,7 @@ from infrastructure.ai.url_utils import (
     normalize_openai_base_url,
 )
 from application.ai.usage_accounting import ModelCall, single_provider_request
+from application.ai.durable_calls import durable_generate
 from domain.ai.value_objects.generation_chunk import GenerationChunk
 from domain.ai.services.generation_stream import closing_generation_stream, generation_events
 
@@ -227,6 +228,7 @@ class DynamicLLMService(LLMService):
             metadata["stream"] = True
         return provider_label, generation_profile, model, metadata
 
+    @durable_generate
     async def generate(self, prompt: Prompt, config: GenerationConfig) -> GenerationResult:
         provider = await self._resolve_provider()
         effective_config = self._merge_config(config, provider)

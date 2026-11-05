@@ -99,6 +99,11 @@ class BackgroundTaskService:
 
     def submit_task(self, task_type, novel_id, chapter_id, payload):
         """提交后台任务（非阻塞）"""
+        db = getattr(self.chapter_repository, "db", None)
+        if task_type == TaskType.EXTRACT_BUNDLE and isinstance(getattr(db, "db_path", None), str):
+            from infrastructure.persistence.database.aftermath_task_store import AftermathTaskStore
+            return AftermathTaskStore(db).enqueue(novel_id.value, int(payload["chapter_number"]), payload["content"],
+                                                  payload.get("chapter_micro_beats"), payload.get("voice_result"))["id"]
         try:
             task = BackgroundTask(
                 task_id=str(uuid.uuid4()),
@@ -147,7 +152,7 @@ class BackgroundTaskService:
 
     async def _execute_with_retry_async(self, task, max_retries=None):
         """执行任务（带异步重试，不阻塞工作线程）"""
-        resolved_max_retries = self._settings.task_max_retries if max_retries is None else max_retries
+        resolved_max_retries = 0 if task.task_type == TaskType.EXTRACT_BUNDLE else self._settings.task_max_retries if max_retries is None else max_retries
         for attempt in range(resolved_max_retries + 1):
             try:
                 await self._execute_task_async(task)

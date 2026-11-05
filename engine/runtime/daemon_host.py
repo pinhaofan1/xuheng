@@ -1433,24 +1433,22 @@ class DaemonHostMixin:
         content: str,
         chapter_id: ChapterId,
     ) -> Dict[str, Any]:
-        """无统一管线时：VOICE + extract_bundle（单次 LLM 叙事/三元组/伏笔）入队 + 同步文风（可能与队列内 VOICE 重复）。"""
-        for task_type in [TaskType.VOICE_ANALYSIS, TaskType.EXTRACT_BUNDLE]:
-            self.background_task_service.submit_task(
-                task_type=task_type,
-                novel_id=novel.novel_id,
-                chapter_id=chapter_id,
-                payload={"content": content, "chapter_number": chapter_num},
-            )
+        """旧入口也提交持久化章后任务，文风只计算一次并随任务留存。"""
+        voice = {"drift_alert": False, "similarity_score": None}
         if self.voice_drift_service and content:
             try:
-                return self.voice_drift_service.score_chapter(
+                voice = self.voice_drift_service.score_chapter(
                     novel_id=novel.novel_id.value,
                     chapter_number=chapter_num,
                     content=content,
                 )
             except Exception as e:
                 logger.warning("文风检测失败（跳过）：%s", e)
-        return {"drift_alert": False, "similarity_score": None}
+        self.background_task_service.submit_task(
+            task_type=TaskType.EXTRACT_BUNDLE, novel_id=novel.novel_id, chapter_id=chapter_id,
+            payload={"content": content, "chapter_number": chapter_num, "voice_result": voice},
+        )
+        return voice
 
 
     def _sum_completed_chapter_words(self, novel_id: str) -> int:

@@ -29,6 +29,8 @@ from application.ai.structured_json_pipeline import (
 from application.world.services.storyline_normalization import (
     get_storyline_normalization_profile,
 )
+from application.ai.durable_calls import durable_effect, current_work
+from application.engine.services.durable_aftermath import effect
 
 logger = logging.getLogger(__name__)
 
@@ -422,6 +424,7 @@ def _fuzzy_match_foreshadow(consumed_desc: str, pending_list: List[Any]) -> Opti
     return None
 
 
+@durable_effect("triples_foreshadows")
 def persist_bundle_triples_and_foreshadows(
     novel_id: str,
     chapter_number: int,
@@ -653,6 +656,7 @@ def _importance_str_to_level(importance_str: str) -> ImportanceLevel:
     return mapping.get(importance_str, ImportanceLevel.MEDIUM)
 
 
+@durable_effect("causal_edges")
 def persist_causal_edges(
     novel_id: str,
     chapter_number: int,
@@ -803,6 +807,7 @@ def _try_resolve_causal_edges(
     return resolved_count
 
 
+@durable_effect("character_mutations")
 def persist_character_mutations(
     novel_id: str,
     chapter_number: int,
@@ -1010,6 +1015,7 @@ def persist_character_mutations(
     return processed
 
 
+@durable_effect("character_states")
 def persist_character_end_states(
     novel_id: str,
     chapter_number: int,
@@ -1096,6 +1102,7 @@ def persist_character_end_states(
     return saved
 
 
+@durable_effect("memory_atoms")
 def persist_bundle_memory_atoms(
     novel_id: str,
     chapter_number: int,
@@ -1272,6 +1279,7 @@ def _build_state_summary(state: Any) -> str:
     return " | ".join(parts) if parts else state.current_state_summary
 
 
+@durable_effect("narrative_debts")
 def update_narrative_debts(
     novel_id: str,
     chapter_number: int,
@@ -1830,6 +1838,13 @@ def _auto_adjust_storyline_range(
         logger.warning("自动调整故事线范围失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
 
 
+def _enqueue_storyline_updates(novel_id, updates):
+    from application.engine.services.persistence_queue import get_persistence_queue, PersistenceCommandType
+    if not get_persistence_queue().push(PersistenceCommandType.UPDATE_STORYLINES.value,
+                                        {"novel_id": novel_id, "storylines": updates}):
+        raise RuntimeError("故事线更新未能入队")
+
+
 def _write_tension_ephemeral(
     novel_id: str,
     chapter_number: int,
@@ -1843,7 +1858,7 @@ def _write_tension_ephemeral(
     from infrastructure.persistence.database.connection import get_database
 
     try:
-        db = get_database(get_db_path())
+        db = get_database() if current_work.get() is not None else get_database(get_db_path())
         if tension_dims:
             composite = tension_dims.get("composite_score", -1)
             if composite == -1:
@@ -1900,6 +1915,7 @@ def _write_tension_ephemeral(
         return False
 
 
+@durable_effect("narrative_extras")
 def persist_bundle_extras(
     novel_id: str,
     chapter_number: int,
@@ -1991,11 +2007,13 @@ def persist_bundle_extras(
             # 🔥 通过持久化队列写入（主进程执行，无锁竞争）
             if updated_storylines:
                 try:
-                    from application.engine.services.persistence_queue import get_persistence_queue, PersistenceCommandType
-                    get_persistence_queue().push(
-                        PersistenceCommandType.UPDATE_STORYLINES.value,
-                        {"novel_id": novel_id, "storylines": updated_storylines},
-                    )
+                    if current_work.get() is not None:
+                        row_ids = {row["id"] for row in updated_storylines}
+                        for sl in storylines:
+                            if sl.id in row_ids:
+                                storyline_repository.save(sl)
+                    else:
+                        _enqueue_storyline_updates(novel_id, updated_storylines)
                     logger.debug("故事线已推送持久化队列 novel=%s count=%d", novel_id, len(updated_storylines))
                 except Exception as pq_err:
                     # 持久化队列不可用，降级到直接写入（可能持锁）
@@ -2261,6 +2279,9 @@ async def sync_chapter_narrative_after_save(
     except Exception as e:
         logger.warning("独立张力评分失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
 
+    if current_work.get() is not None and (tension_dimensions is None or not tension_dimensions.is_evaluated):
+        raise RuntimeError("张力评分未完成，模型结果已留存，等待处理后恢复")
+
     # 将张力结果注入 bundle，供 persist_bundle_extras 使用
     if tension_dimensions is not None:
         bundle["tension_score"] = tension_dimensions.composite_score
@@ -2300,17 +2321,19 @@ async def sync_chapter_narrative_after_save(
     except Exception as e:
         logger.debug("微观节拍赋值失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
     
-    knowledge_service.upsert_chapter_summary(
-        novel_id=novel_id,
-        chapter_id=chapter_number,
-        summary=summary,
-        key_events=key_events or "（未提取）",
-        open_threads=open_threads or "无",
-        consistency_note=consistency_note,
-        beat_sections=beat_sections,
-        micro_beats=mb_out if mb_out else None,
-        sync_status="synced" if summary else "draft",
-    )
+    def _save_summary():
+        knowledge_service.upsert_chapter_summary(
+            novel_id=novel_id,
+            chapter_id=chapter_number,
+            summary=summary,
+            key_events=key_events or "（未提取）",
+            open_threads=open_threads or "无",
+            consistency_note=consistency_note,
+            beat_sections=beat_sections,
+            micro_beats=mb_out if mb_out else None,
+            sync_status="synced" if summary else "draft",
+        )
+    effect("chapter_summary", _save_summary)
     flags["narrative_sync_ok"] = True
 
     if triple_repository is not None or foreshadowing_repo is not None:
@@ -2420,6 +2443,9 @@ async def sync_chapter_narrative_after_save(
             logger.debug("章节向量索引完成 novel=%s ch=%s", novel_id, chapter_number)
         except Exception as e:
             logger.warning("章节向量索引失败 novel=%s ch=%s: [%s] %s", novel_id, chapter_number, type(e).__name__, e, exc_info=True)
+
+    if current_work.get() is not None and indexing_svc is not None and not flags["vector_stored"]:
+        raise RuntimeError("向量索引未完成，已有叙事结果保留，等待恢复")
 
     # 🔥 将多维张力评分（0-100）传递给调用方，供审计流程替代旧式 _score_tension
     tension_composite = bundle.get("tension_score")

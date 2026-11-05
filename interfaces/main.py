@@ -182,8 +182,17 @@ def create_app(app_settings: BackendSettings | None = None) -> FastAPI:
         try:
             from application.audit.services.review_jobs import get_review_jobs
             get_review_jobs()
+            import asyncio
+            from application.engine.services.durable_aftermath import poll_aftermath_tasks
+            aftermath_worker = asyncio.create_task(poll_aftermath_tasks())
             yield
         finally:
+            if 'aftermath_worker' in locals():
+                aftermath_worker.cancel()
+                try:
+                    await aftermath_worker
+                except asyncio.CancelledError:
+                    pass
             _get_lifecycle().shutdown()
 
     created = FastAPI(

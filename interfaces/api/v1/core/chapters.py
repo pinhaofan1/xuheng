@@ -293,6 +293,12 @@ async def update_chapter(
             novel_id, chapter_number, micro_beats_dicts
         )
 
+    if isinstance(pipeline, ChapterAftermathPipeline):
+        try:
+            await pipeline.prepare_after_save(novel_id, chapter_number, content, micro_beats_dicts)
+        except Exception as exc:
+            logger.warning("正文写入尚未确认，未启动付费章后处理: %s", exc)
+            raise HTTPException(503, "正文保存尚未确认，请刷新核对；章后处理尚未启动") from exc
     background_tasks.add_task(
         _run_chapter_aftermath,
         novel_id,

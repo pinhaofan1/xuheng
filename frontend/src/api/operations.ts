@@ -7,6 +7,7 @@ export interface ModelCall { id: string; kind: string; model: string; status: st
 export interface UsageTotals { calls: number; input_tokens: number; output_tokens: number; charged_tokens: number; estimated_cost: number; uncertain_calls: number; unknown_cost_calls: number; reconciled_calls: number }
 export interface ReconciliationRequest { input_tokens: number; output_tokens: number; billed_cost: number | null; expected_revision: number; request_key: string; note: string; reference: string; request_finished: true }
 export interface Reconciliation { id: string; revision: number; note: string; reference: string; created_at: string; before: {input_tokens: number | null; output_tokens: number | null; cost: number | null; reserved_tokens: number; reserved_cost: number | null}; after: {input_tokens: number; output_tokens: number; cost: number | null; cost_source: string}; difference: {charged_tokens: number; cost: number | null} }
+export interface AftermathTask { id: string; number: number; content_hash: string; status: string; phase: string; error: string; created_at: string; updated_at: string; stale: boolean; steps: string[]; unknown_requests: number; requests: {step: string; status: string; attempt: number; call_ids: string[]; created_at: string}[]; confirmations: {confirmed_unknown: number; note: string; created_at: string}[] }
 export interface Operations {
   chapter_progress?: {number:number;content_hash:string;stage:string;status:string;error:string;updated_at:string;stale:boolean;draft_available?:boolean;uncommitted?:boolean}[]
   budget_block: {message: string; created_at: string} | null
@@ -16,6 +17,7 @@ export interface Operations {
   calls_page: {offset: number; total: number; limit: number}
   calls: ModelCall[]
   jobs: ReviewJob[]
+  aftermath_tasks?: AftermathTask[]
 }
 const root = (novel: string) => `/evidence-reviews/${encodeURIComponent(novel)}`
 export const operationsApi = {
@@ -25,4 +27,5 @@ export const operationsApi = {
   reconciliations: (novel: string, call: string) => apiClient.get<Reconciliation[]>(`${root(novel)}/operations/calls/${encodeURIComponent(call)}/reconciliations`) as Promise<Reconciliation[]>,
   savePolicy: (novel: string, policy: UsagePolicy) => apiClient.put<UsagePolicy>(`${root(novel)}/operations/policy`, policy) as Promise<UsagePolicy>,
   retry: (novel: string, job: string) => apiClient.post<ReviewJob>(`${root(novel)}/jobs/${job}/retry`, {}) as Promise<ReviewJob>,
+  resumeAftermath: (novel: string, task: string, body: {confirm_unknown: boolean; retry_model_calls: boolean; note: string}) => apiClient.post<AftermathTask>(`${root(novel)}/operations/aftermath/${encodeURIComponent(task)}/resume`, body) as Promise<AftermathTask>,
 }

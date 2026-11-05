@@ -491,6 +491,10 @@ class DatabaseConnection:
         conn.close()
 
     def get_connection(self) -> sqlite3.Connection:
+        from infrastructure.persistence.database.atomic_effect import binding_for
+        bound = binding_for(self.db_path)
+        if bound is not None:
+            return bound
         if not hasattr(self._local, 'connection') or self._local.connection is None:
             timeout_seconds = max(1.0, get_sqlite_pragma_settings().busy_timeout_ms / 1000)
             conn = sqlite3.connect(
@@ -506,6 +510,12 @@ class DatabaseConnection:
     @contextmanager
     def transaction(self):
         """事务：持久化消费者在 writer 线程上直连；其它线程收集为一条 TXN_BATCH 入队。"""
+        from infrastructure.persistence.database.atomic_effect import binding_for
+        bound = binding_for(self.db_path)
+        if bound is not None:
+            with bound:
+                yield bound
+            return
         from infrastructure.persistence.database.write_dispatch import (
             TxnCollectingConnection,
             allow_direct_sqlite_writes,
@@ -535,6 +545,10 @@ class DatabaseConnection:
                 raise RuntimeError("持久化队列未就绪，事务未能入队")
 
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
+        from infrastructure.persistence.database.atomic_effect import binding_for
+        bound = binding_for(self.db_path)
+        if bound is not None:
+            return bound.execute(sql, params)
         from infrastructure.persistence.database.write_dispatch import (
             _EnqueuedStmtCursor,
             allow_direct_sqlite_writes,
@@ -557,6 +571,11 @@ class DatabaseConnection:
         return conn.execute(sql, params)
 
     def execute_many(self, sql: str, params_list: list) -> None:
+        from infrastructure.persistence.database.atomic_effect import binding_for
+        bound = binding_for(self.db_path)
+        if bound is not None:
+            bound.executemany(sql, params_list)
+            return
         from infrastructure.persistence.database.write_dispatch import (
             allow_direct_sqlite_writes,
             enqueue_txn_batch,
@@ -586,6 +605,9 @@ class DatabaseConnection:
 
     def commit(self) -> None:
         """提交当前线程连接上的事务；非 writer 上的变更已由队列消费者提交，此处仅 writer 落 commit + checkpoint。"""
+        from infrastructure.persistence.database.atomic_effect import binding_for
+        if binding_for(self.db_path) is not None:
+            return
         from infrastructure.persistence.database.write_dispatch import (
             allow_direct_sqlite_writes,
             is_sqlite_writer_thread,
@@ -691,6 +713,10 @@ _connection_pool_instance: Optional["SQLiteConnectionPool"] = None
 def get_database(db_path: Optional[str] = None) -> DatabaseConnection:
     """获取全局数据库实例（默认使用仓库内 data/plotpilot.db 绝对路径）。"""
     global _db_instance
+    from infrastructure.persistence.database.atomic_effect import binding_for
+    bound = binding_for(db_path)
+    if bound is not None:
+        return bound.db
     if db_path is None:
         if _db_instance is None:
             from application.paths import get_db_path
