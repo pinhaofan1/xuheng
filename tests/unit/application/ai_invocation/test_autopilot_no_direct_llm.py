@@ -31,7 +31,7 @@ def test_autopilot_runtime_no_longer_contains_direct_llm_fallback_copy():
 def test_daemon_stream_watch_routes_novel_calls_to_invocation_before_provider_stream():
     text = Path("engine/runtime/daemon_host.py").read_text(encoding="utf-8")
     invocation_call = "return await self._stream_llm_via_autopilot_invocation("
-    provider_stream = "async for chunk in self.llm_service.stream_generate(prompt, config):"
+    provider_stream = "stream = self.llm_service.stream_generate(prompt, config)"
     direct_failure = "raise"
 
     assert invocation_call in text

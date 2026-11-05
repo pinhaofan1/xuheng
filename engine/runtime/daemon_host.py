@@ -1732,27 +1732,29 @@ class DaemonHostMixin:
         # 启动空闲超时检测
         idle_watch_task = asyncio.create_task(_watch_idle_timeout())
 
+        from domain.ai.services.generation_stream import closing_generation_stream
+
         try:
-            async for chunk in self.llm_service.stream_generate(prompt, config):
-                if stop_detected.is_set():
-                    break
-                content += chunk
-                last_chunk_time = time.time()  # 更新最后收到数据的时间
+            stream = self.llm_service.stream_generate(prompt, config)
+            async with closing_generation_stream(stream):
+                async for chunk in stream:
+                    if stop_detected.is_set():
+                        break
+                    content += chunk
+                    last_chunk_time = time.time()
 
-                # 🔧 优化：高频小批量推送，实现流式打字机效果
-                if novel is not None and chunk:
-                    chunk_buffer.append(chunk)
-                    current_time = time.time()
-                    # 定期推送整章快照（含已完成节拍 + 当前节拍流式部分）
-                    if current_time - last_push_time >= CHUNK_PUSH_INTERVAL:
-                        await self._push_streaming_chunk(
-                            novel.novel_id.value,
-                            content=_live_chapter_snapshot(),
-                        )
-                        last_push_time = current_time
+                    if novel is not None and chunk:
+                        chunk_buffer.append(chunk)
+                        current_time = time.time()
+                        if current_time - last_push_time >= CHUNK_PUSH_INTERVAL:
+                            await self._push_streaming_chunk(
+                                novel.novel_id.value,
+                                content=_live_chapter_snapshot(),
+                            )
+                            last_push_time = current_time
 
-                if stop_detected.is_set():
-                    break
+                    if stop_detected.is_set():
+                        break
         except asyncio.CancelledError:
             logger.info(f"[{nid}] 流式生成被取消")
             raise

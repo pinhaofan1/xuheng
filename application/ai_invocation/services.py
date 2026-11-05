@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping
 
 from domain.ai.services.llm_service import GenerationConfig, LLMService
 from application.ai.usage_accounting import usage_scope
+from domain.ai.services.generation_stream import closing_generation_stream,generation_events
 from application.ai_invocation.continuation import ContinuationContext, execute_continuation
 from application.ai_invocation.dtos import (
     AdoptionCommit,
@@ -126,20 +127,25 @@ class AttemptService:
         session.status = InvocationSessionStatus.GENERATING
         content_parts: list[str] = []
         stopped = False
+        usage = None
         try:
             with usage_scope(str(session.context.get("novel_id") or ""), operation=session.operation):
-                async for chunk in self._llm_service.stream_generate(prompt_snapshot.prompt, config or GenerationConfig()):
-                    if not chunk:
-                        continue
-                    content_parts.append(chunk)
-                    attempt.content = "".join(content_parts)
-                    if on_chunk is not None:
-                        keep_going = on_chunk(chunk, attempt.content)
-                        if keep_going is False:
-                            stopped = True
-                            break
+                stream=generation_events(self._llm_service,prompt_snapshot.prompt,config or GenerationConfig())
+                async with closing_generation_stream(stream):
+                    async for chunk in stream:
+                        if chunk.token_usage is not None:
+                            usage=chunk.token_usage
+                        if not chunk.text:
+                            continue
+                        content_parts.append(chunk.text)
+                        attempt.content = "".join(content_parts)
+                        if on_chunk is not None:
+                            keep_going = on_chunk(chunk.text, attempt.content)
+                            if keep_going is False:
+                                stopped = True
+                                break
             attempt.content = "".join(content_parts)
-            attempt.token_usage = None
+            attempt.token_usage = None if stopped else usage
             if stopped:
                 attempt.status = InvocationAttemptStatus.FAILED
                 attempt.error = "streaming stopped"
@@ -151,6 +157,12 @@ class AttemptService:
             attempt.status = InvocationAttemptStatus.FAILED
             attempt.error = str(exc)
             session.status = InvocationSessionStatus.FAILED
+            raise
+        except BaseException:
+            attempt.status=InvocationAttemptStatus.FAILED
+            attempt.token_usage=None
+            attempt.error="streaming interrupted"
+            session.status=InvocationSessionStatus.CANCELLED
             raise
 
     def get(self, attempt_id: str) -> InvocationAttempt:

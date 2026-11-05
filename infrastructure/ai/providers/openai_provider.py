@@ -11,6 +11,8 @@ from domain.ai.services.llm_service import GenerationConfig, GenerationResult
 from domain.ai.value_objects.prompt import Prompt
 from domain.ai.value_objects.token_usage import TokenUsage
 from application.ai.llm_retry_policy import LLM_MAX_TOTAL_ATTEMPTS, is_retryable_llm_error
+from domain.ai.value_objects.generation_chunk import GenerationChunk
+from domain.ai.services.generation_stream import closing_generation_stream
 from infrastructure.ai.config.settings import Settings
 from infrastructure.ai.http_timeout import build_httpx_timeout
 from .base import BaseProvider
@@ -174,21 +176,11 @@ class OpenAIProvider(BaseProvider):
     ) -> AsyncIterator[str]:
         from application.ai.usage_accounting import has_usage_scope
         if has_usage_scope():
-            if self._use_legacy:
-                kwargs = self._build_chat_request_kwargs(self._build_messages(prompt),config)
-                kwargs["stream"] = True
-                stream = await self.async_client.chat.completions.create(**kwargs)
+            stream=self.stream_generate_with_usage(prompt,config)
+            async with closing_generation_stream(stream):
                 async for chunk in stream:
-                    if chunk.choices:
-                        text = chunk.choices[0].delta.content
-                        if text:
-                            yield text
-            else:
-                stream = await self.async_client.responses.create(**self._build_responses_request_kwargs(prompt,config,stream=True))
-                async for chunk in stream:
-                    text = self._extract_text_from_responses_chunk(chunk)
-                    if text:
-                        yield text
+                    if chunk.text:
+                        yield chunk.text
             return
         try:
             base_url = self.settings.base_url or "https://api.openai.com/v1"
@@ -226,6 +218,78 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             logger.error(f"[Stream] Failed: {e}")
             raise RuntimeError(f"Failed to stream text: {str(e)}") from e
+
+    @classmethod
+    def _final_stream_usage(cls,usage,*,responses=False):
+        if usage is None:
+            return None
+        input_tokens=cls._response_field(usage,"input_tokens" if responses else "prompt_tokens",None)
+        output_tokens=cls._response_field(usage,"output_tokens" if responses else "completion_tokens",None)
+        if any(type(value) is not int or value < 0 for value in (input_tokens,output_tokens)):
+            return None
+        total=cls._response_field(usage,"total_tokens",None)
+        if total is not None and (type(total) is not int or total != input_tokens+output_tokens):
+            return None
+        return TokenUsage(input_tokens,output_tokens)
+
+    async def stream_generate_with_usage(self,prompt: Prompt,config: GenerationConfig) -> AsyncIterator[GenerationChunk]:
+        """One physical request; emit usage once, after normal stream completion.
+
+        Chat's usage-only tail must not be skipped for having empty choices.
+        Missing/invalid usage remains unknown. Early consumer exit never reaches
+        the final snapshot, and the SDK response closes in the finally block.
+        """
+        usage=None
+        terminal=False
+        if self._use_legacy:
+            kwargs=self._build_chat_request_kwargs(self._build_messages(prompt),config,stream=True)
+            extra=dict(kwargs.get("extra_body") or {})
+            options=extra.pop("stream_options",{})
+            extra.pop("stream",None)
+            kwargs["extra_body"]=extra or None
+            kwargs["stream_options"]={**(options if isinstance(options,dict) else {}),"include_usage":True}
+            stream=await self.async_client.chat.completions.create(**kwargs)
+        else:
+            stream=await self.async_client.responses.create(**self._build_responses_request_kwargs(prompt,config,stream=True))
+        try:
+            async for event in stream:
+                if self._use_legacy:
+                    choices=self._response_field(event,"choices",[]) or []
+                    first=next((choice for choice in choices if self._response_field(choice,"index",0)==0),None)
+                    delta=self._response_field(first,"delta",None)
+                    text=self._response_field(delta,"content","") or ""
+                    text=self._normalize_chat_completion_content(text) if isinstance(text,list) else text
+                    if not isinstance(text,str):
+                        text=""
+                    if text and terminal:
+                        raise RuntimeError("模型流在结束标记后继续返回正文，未自动重试")
+                    reason=self._response_field(first,"finish_reason",None)
+                    if reason is not None:
+                        if reason not in {"stop","length","content_filter","tool_calls","function_call"}:
+                            raise RuntimeError("模型流返回无效结束标记，未自动重试")
+                        terminal=True
+                    reported=self._response_field(event,"usage",None)
+                    if reported is not None and terminal:
+                        usage=self._final_stream_usage(reported)
+                else:
+                    kind=self._response_field(event,"type","")
+                    if kind in {"error","response.failed","response.incomplete"}:
+                        raise RuntimeError("模型流未成功完成，未自动重试；请查看任务记录后处理")
+                    text=self._extract_text_from_responses_chunk(event)
+                    if text and terminal:
+                        raise RuntimeError("模型流在结束标记后继续返回正文，未自动重试")
+                    if kind=="response.completed":
+                        terminal=True
+                        response=self._response_field(event,"response",None)
+                        usage=self._final_stream_usage(self._response_field(response,"usage",None),responses=True)
+                if text:
+                    yield GenerationChunk(text=text)
+            if not terminal:
+                raise RuntimeError("模型流在收到结束标记前中断，未自动重试")
+            if usage is not None:
+                yield GenerationChunk(token_usage=usage)
+        finally:
+            await stream.close()
 
     @staticmethod
     def _build_messages(prompt: Prompt) -> list[dict[str, str]]:

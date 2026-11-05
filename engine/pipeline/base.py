@@ -1125,13 +1125,17 @@ class BaseStoryPipeline(ABC):
                 self._push_streaming_snapshot(ctx.novel_id, content)
             last_push = now
 
-        async for piece in ctx.llm_service.stream_generate(prompt, config):
-            if self._novel_stream_should_stop(ctx.novel_id):
-                return ""
-            if not piece:
-                continue
-            content_parts.append(piece)
-            _maybe_push()
+        from domain.ai.services.generation_stream import closing_generation_stream
+
+        stream = ctx.llm_service.stream_generate(prompt, config)
+        async with closing_generation_stream(stream):
+            async for piece in stream:
+                if self._novel_stream_should_stop(ctx.novel_id):
+                    return ""
+                if not piece:
+                    continue
+                content_parts.append(piece)
+                _maybe_push()
         _maybe_push(force=True)
         return "".join(content_parts)
 

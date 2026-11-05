@@ -76,6 +76,12 @@ def usage_scope(novel_id, journal=None, operation=""):
     if not novel_id:
         yield
         return
+    parent = _scope.get()
+    if parent is not None and parent[0] == novel_id:
+        if journal is None:
+            journal = parent[1]
+        if not operation:
+            operation = parent[2]
     token = _scope.set((novel_id, journal, operation))
     try:
         yield

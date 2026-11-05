@@ -28,6 +28,8 @@ from application.ai_invocation.dtos import (
     stable_hash,
 )
 from domain.ai.services.llm_service import DEFAULT_MAX_OUTPUT_TOKENS, GenerationConfig
+from domain.ai.services.generation_stream import closing_generation_stream, generation_events
+from application.ai.usage_accounting import usage_scope
 from application.ai_invocation.gateway import AIInvocationGateway
 from application.ai_invocation.input_materialization import context_key_for_scope, materialize_input_variables
 from application.ai_invocation.prompt_assembler import CPMSPromptAssembler, PromptAssemblyError
@@ -654,19 +656,21 @@ async def _run_streaming_invocation_attempt(
     parts: list[str] = []
     last_save = 0.0
     try:
-        async for chunk in llm_service.stream_generate(
-            session.prompt_snapshot.prompt,
-            config or GenerationConfig(),
-        ):
-            if not chunk:
-                continue
-            parts.append(chunk)
-            now = time.monotonic()
-            if now - last_save >= 0.35:
-                attempt.content = "".join(parts)
-                with sqlite_writes_bypass_queue():
-                    repos["attempt"].save(attempt)
-                last_save = now
+        with usage_scope(str(session.context.get("novel_id") or ""), operation=session.operation):
+            stream = generation_events(llm_service, session.prompt_snapshot.prompt, config or GenerationConfig())
+            async with closing_generation_stream(stream):
+                async for chunk in stream:
+                    if chunk.token_usage is not None:
+                        attempt.token_usage = chunk.token_usage
+                    if not chunk.text:
+                        continue
+                    parts.append(chunk.text)
+                    now = time.monotonic()
+                    if now - last_save >= 0.35:
+                        attempt.content = "".join(parts)
+                        with sqlite_writes_bypass_queue():
+                            repos["attempt"].save(attempt)
+                        last_save = now
 
         attempt.content = "".join(parts)
         if not attempt.content.strip():
@@ -691,6 +695,17 @@ async def _run_streaming_invocation_attempt(
             session_id,
             attempt_id,
         )
+    except asyncio.CancelledError:
+        attempt.content = "".join(parts)
+        attempt.token_usage = None
+        attempt.status = InvocationAttemptStatus.FAILED
+        attempt.error = "streaming interrupted"
+        session.status = InvocationSessionStatus.CANCELLED
+        with sqlite_writes_bypass_queue():
+            repos["attempt"].save(attempt)
+            repos["session"].save(session)
+        _publish_autopilot_session_state(session)
+        raise
 
 
 def _render_prompt_draft(session, system_template: str, user_template: str | None = None):

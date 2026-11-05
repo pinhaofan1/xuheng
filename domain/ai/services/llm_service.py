@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import AsyncIterator, Dict, Optional
 from domain.ai.value_objects.prompt import Prompt
 from domain.ai.value_objects.token_usage import TokenUsage
+from domain.ai.value_objects.generation_chunk import GenerationChunk
 
 
 # Modified for Xuheng: sensible default; explicit user limits are respected.
@@ -65,3 +66,11 @@ class LLMService(ABC):
     ) -> AsyncIterator[str]:
         """流式生成内容"""
         pass
+
+    async def stream_generate_with_usage(self,prompt: Prompt,config: GenerationConfig) -> AsyncIterator[GenerationChunk]:
+        """Compatible default for providers that only expose text deltas."""
+        from domain.ai.services.generation_stream import closing_generation_stream
+        stream=self.stream_generate(prompt,config)
+        async with closing_generation_stream(stream):
+            async for text in stream:
+                yield GenerationChunk(text=text)

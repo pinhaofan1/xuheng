@@ -1,12 +1,28 @@
 {
-  "version": "0.6.0",
+  "version": "0.7.0",
   "updated_at": "2026-11-05",
-  "next_order": ["F04", "F02", "F03", "F01", "F08", "F09", "F06", "F07", "F10", "F11", "F05", "F12", "F13", "F14", "F15"],
+  "next_order": [
+    "F04",
+    "F02",
+    "F03",
+    "F01",
+    "F08",
+    "F09",
+    "F06",
+    "F07",
+    "F10",
+    "F11",
+    "F05",
+    "F12",
+    "F13",
+    "F14",
+    "F15"
+  ],
   "baseline": {
-    "unit_passed": 1700,
+    "unit_passed": 1727,
     "unit_skipped": 7,
     "browser_passed": 11,
-    "evidence": "project_docs/RELEASE_0.6.md"
+    "evidence": "project_docs/RELEASE_0.7.md"
   },
   "items": [
     {
@@ -180,10 +196,13 @@
       "group": "next",
       "priority": "P0",
       "title": "流式请求真实用量结算",
-      "status": "todo",
+      "status": "done",
       "kind": "feature",
       "acceptance": "接收 OpenAI 兼容流的 usage 并精确结算；缺失用量、取消和断流继续保留明确的未知/预留状态。",
-      "evidence": []
+      "evidence": [
+        "project_docs/RELEASE_0.7.md"
+      ],
+      "completed_at": "2026-11-05"
     },
     {
       "id": "F05",

@@ -26,6 +26,8 @@ from infrastructure.ai.url_utils import (
     normalize_openai_base_url,
 )
 from application.ai.usage_accounting import ModelCall, single_provider_request
+from domain.ai.value_objects.generation_chunk import GenerationChunk
+from domain.ai.services.generation_stream import closing_generation_stream, generation_events
 
 _DEFAULT_CONFIG = GenerationConfig()
 logger = logging.getLogger(__name__)
@@ -293,6 +295,13 @@ class DynamicLLMService(LLMService):
         return result
 
     async def stream_generate(self, prompt: Prompt, config: GenerationConfig) -> AsyncIterator[str]:
+        stream=self.stream_generate_with_usage(prompt,config)
+        async with closing_generation_stream(stream):
+            async for chunk in stream:
+                if chunk.text:
+                    yield chunk.text
+
+    async def stream_generate_with_usage(self,prompt: Prompt,config: GenerationConfig) -> AsyncIterator[GenerationChunk]:
         provider = await self._resolve_provider()
         effective_config = self._merge_config(config, provider)
         trace = ensure_trace(
@@ -328,15 +337,21 @@ class DynamicLLMService(LLMService):
         preview_parts: list[str] = []
         preview_chars = 0
         total_chars = 0
+        usage = None
         try:
-            with single_provider_request():
-                async for chunk in provider.stream_generate(prompt, effective_config):
-                    if chunk:
-                        response_parts.append(chunk)
-                        total_chars += len(chunk)
+            # Usage-aware providers own their one-request policy. Do not hold a
+            # ContextVar token across yields to callers of the legacy text API.
+            stream=generation_events(provider,prompt,effective_config)
+            async with closing_generation_stream(stream):
+                async for chunk in stream:
+                    if chunk.token_usage is not None:
+                        usage=chunk.token_usage
+                    if chunk.text:
+                        response_parts.append(chunk.text)
+                        total_chars += len(chunk.text)
                         if preview_chars < 320:
-                            preview_parts.append(chunk)
-                            preview_chars += len(chunk)
+                            preview_parts.append(chunk.text)
+                            preview_chars += len(chunk.text)
                     yield chunk
         except BaseException as exc:
             call.fail()
@@ -355,7 +370,7 @@ class DynamicLLMService(LLMService):
             )
             raise
         else:
-            call.finish()  # String-only provider streams do not expose billed usage.
+            call.finish(getattr(usage,"input_tokens",None),getattr(usage,"output_tokens",None))
             content_for_hash = "".join(response_parts)
             recorder.record_span(
                 phase="llm_response",
@@ -369,6 +384,8 @@ class DynamicLLMService(LLMService):
                 response_hash=content_hash(content_for_hash),
                 response_preview=preview_text("".join(preview_parts)),
                 response_full=content_for_hash,
+                token_input=getattr(usage,"input_tokens",None),
+                token_output=getattr(usage,"output_tokens",None),
                 latency_ms=int((time.perf_counter() - started) * 1000),
                 metadata={**request_metadata, "content_length": total_chars},
             )
