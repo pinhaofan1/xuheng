@@ -65,7 +65,14 @@ class AppContainer:
             return None
 
         try:
+            from application.paths import get_db_path
+            from infrastructure.persistence.backup_service import restored_index_generation
+            restore_generation = restored_index_generation(get_db_path())
             if vector_settings.use_qdrant:
+                if restore_generation:
+                    logger.warning("数据库已恢复，远端旧向量暂停使用；正文检索仍可用，需重建索引。")
+                    self._vector_store_init_failed = True
+                    return None
                 from infrastructure.ai.qdrant_vector_store import QdrantVectorStore
 
                 host = vector_settings.qdrant_host
@@ -83,6 +90,8 @@ class AppContainer:
             persist_directory = resolve_runtime_data_path(
                 vector_settings.persist_directory
             )
+            if restore_generation:
+                persist_directory = persist_directory / ('restored-'+restore_generation)
             persist_directory.mkdir(parents=True, exist_ok=True)
             self._vector_store = ChromaDBVectorStore(
                 persist_directory=str(persist_directory)

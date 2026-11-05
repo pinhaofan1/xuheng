@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
 import WorkspaceNav from '@/components/layout/WorkspaceNav.vue'
+import DataBackups from '@/components/operations/DataBackups.vue'
 import AppIcon from '@/components/layout/AppIcon.vue'
 import { operationsApi, type Operations, type UsagePolicy, type ModelCall, type Reconciliation, type AftermathTask } from '@/api/operations'
 import { evidenceReviewApi, type ReviewJob } from '@/api/evidenceReview'
@@ -52,6 +53,7 @@ const tokenDifference = computed(() => {
 const saved = ref('')
 const dirty = computed(() => saved.value !== '' && JSON.stringify(draft.value) !== saved.value)
 const policyOpen = ref(false)
+const backupsOpen = ref(false)
 const clock = ref(Date.now())
 let timer: ReturnType<typeof setTimeout> | undefined
 let sequence = 0
@@ -177,7 +179,8 @@ onBeforeUnmount(() => { disposed = true; ++sequence; clearTimeout(timer) })
     <WorkspaceNav section="operations" :novel-id="novel" />
     <main class="operations-desk">
       <div class="operations-crumb"><router-link :to="`/book/${novel}/workbench`">章节创作</router-link><span>/</span><span>任务与用量</span></div>
-      <header class="operations-header"><div><p class="operations-kicker">创作记录</p><h1>任务与用量</h1><p>查看执行进度，保留每一次请求的记录。</p></div><div class="operations-actions"><n-button @click="load()"><template #icon><AppIcon name="history" /></template>刷新记录</n-button><n-button type="primary" :disabled="!data" @click="policyOpen = true">设置作品预算</n-button></div></header>
+      <DataBackups v-model:show="backupsOpen" />
+      <header class="operations-header"><div><p class="operations-kicker">创作记录</p><h1>任务与用量</h1><p>查看执行进度，保留每一次请求的记录。</p></div><div class="operations-actions"><n-button @click="backupsOpen = true">数据备份</n-button><n-button @click="load()"><template #icon><AppIcon name="history" /></template>刷新记录</n-button><n-button type="primary" :disabled="!data" @click="policyOpen = true">设置作品预算</n-button></div></header>
       <n-alert v-if="error" type="error" title="任务记录暂时不可用" class="operations-alert">{{ error }}<n-button text @click="load(!data)">重新读取</n-button></n-alert>
       <template v-if="data">
         <n-alert v-if="data.budget_block" type="warning" title="作品预算已拦截请求" class="operations-alert">{{ data.budget_block.message }}。调整并保存预算后，请手动恢复托管或重新发起任务。</n-alert>

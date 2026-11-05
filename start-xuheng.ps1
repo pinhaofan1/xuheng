@@ -10,6 +10,8 @@ $reviewPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $reviewPython)) {
     throw 'Create .venv and install requirements.txt first. See project_docs/GETTING_STARTED.md.'
 }
+& $reviewPython scripts/manage_backups.py recover
+if ($LASTEXITCODE -ne 0) { throw 'Interrupted restore recovery failed. Keep data and backups; do not start the application.' }
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'frontend\dist\index.html'))) {
     throw 'Build the frontend first: cd frontend; npm ci; npm run build'
 }

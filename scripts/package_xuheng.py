@@ -13,7 +13,8 @@ SOURCE_DIRS = {".github", "application", "audit", "config", "domain", "engine", 
 SOURCE_FILES = {".env.example", ".gitignore", ".gitattributes", "AGENTS.md", "LICENSE", "NOTICE.md", "CONTRIBUTORS.md", "README.md",
                 "README_LOGGING.md", "VERSION", "pyproject.toml", "pytest.ini", "load_env.py",
                 "cli.py", "__init__.py", "__main__.py", "requirements.txt",
-                "requirements-tested.txt", "requirements-local.txt", "start-xuheng.ps1", "start-xuheng.cmd"}
+                "requirements-tested.txt", "requirements-local.txt", "start-xuheng.ps1", "start-xuheng.cmd",
+                "restore-xuheng.ps1", "restore-xuheng.cmd"}
 EXCLUDED_PARTS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "data",
                   "logs", "test-results", "playwright-report", ".validation", ".release"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".db", ".sqlite", ".sqlite3", ".log", ".pem", ".key",

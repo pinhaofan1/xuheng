@@ -446,6 +446,12 @@ class DatabaseConnection:
     _WAL_CHECKPOINT_INTERVAL = 20
 
     def __init__(self, db_path: str):
+        from infrastructure.persistence.backup_service import file_lock, BackupBusy
+        directory = Path(db_path).resolve().parent
+        self._runtime_lease = file_lock(directory / '.xuheng-runtime.lock', shared=True)
+        if (directory / '.xuheng-restore.json').exists():
+            self._runtime_lease.close()
+            raise BackupBusy('发现未完成的恢复，请使用启动脚本自动回滚，或运行 scripts/manage_backups.py recover')
         self.db_path = db_path
         self._local = threading.local()
         self._write_counter = 0
@@ -453,7 +459,11 @@ class DatabaseConnection:
         # 记录所有线程连接，以便 close_all() 时统一清理
         self._all_connections: list[sqlite3.Connection] = []
         self._all_connections_lock = threading.Lock()
-        self._ensure_database_exists()
+        try:
+            self._ensure_database_exists()
+        except BaseException:
+            self._runtime_lease.close()
+            raise
 
     def _ensure_database_exists(self) -> None:
         db_file = Path(self.db_path)
@@ -491,6 +501,14 @@ class DatabaseConnection:
         conn.close()
 
     def get_connection(self) -> sqlite3.Connection:
+        with self._all_connections_lock:
+            if self._runtime_lease.closed:
+                from infrastructure.persistence.backup_service import file_lock, BackupBusy
+                directory = Path(self.db_path).resolve().parent
+                self._runtime_lease = file_lock(directory / '.xuheng-runtime.lock', shared=True)
+                if (directory / '.xuheng-restore.json').exists():
+                    self._runtime_lease.close()
+                    raise BackupBusy('存在未完成的恢复，请先运行恢复回滚')
         from infrastructure.persistence.database.atomic_effect import binding_for
         bound = binding_for(self.db_path)
         if bound is not None:
@@ -661,6 +679,9 @@ class DatabaseConnection:
                     pass
             self._local.connection = None
             logger.info("Database connection closed (thread-local)")
+        with self._all_connections_lock:
+            if not self._all_connections:
+                self._runtime_lease.close()
 
     def close_all(self, skip_checkpoint: bool = False) -> None:
         """关闭所有线程的数据库连接（应用关闭时调用）。
@@ -686,6 +707,8 @@ class DatabaseConnection:
             except Exception:
                 pass
         logger.info("All database connections closed (%d, skip_checkpoint=%s)", len(connections), skip_checkpoint)
+        self._runtime_lease.close()
+        self._local.connection = None
 
     def _maybe_checkpoint(self) -> None:
         """定期 WAL checkpoint：每 _WAL_CHECKPOINT_INTERVAL 次写操作触发 TRUNCATE。"""

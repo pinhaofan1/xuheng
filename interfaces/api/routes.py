@@ -66,6 +66,7 @@ def register_api_routes(app: FastAPI) -> None:
     )
     from interfaces.api.v1.blueprint.confluence_routes import router as confluence_router
     from interfaces.api.v1.core import (
+        backup_routes,
         chapters,
         export,
         manuscript_entity_routes,
@@ -105,6 +106,7 @@ def register_api_routes(app: FastAPI) -> None:
         app,
         (
             RouterRegistration(novels.router, API_V1_PREFIX),
+            RouterRegistration(backup_routes.router, API_V1_PREFIX),
             RouterRegistration(taxonomy_routes.router, API_V1_PREFIX),
             RouterRegistration(chapters.router, NOVELS_API_PREFIX),
             RouterRegistration(manuscript_entity_routes.router, NOVELS_API_PREFIX),
