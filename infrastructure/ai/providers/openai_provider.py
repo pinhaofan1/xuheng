@@ -39,6 +39,7 @@ class OpenAIProvider(BaseProvider):
         self._use_legacy = settings.use_legacy_chat_completions
 
         client_kwargs = {
+            "max_retries": 0,
             "api_key": settings.api_key,
             "timeout": settings.timeout_seconds,
             "default_headers": settings.extra_headers or None,
@@ -59,6 +60,19 @@ class OpenAIProvider(BaseProvider):
         prompt: Prompt,
         config: GenerationConfig
     ) -> GenerationResult:
+        from application.ai.usage_accounting import has_usage_scope
+        if has_usage_scope():
+            # A budget admission represents one physical request. Do not hide SDK
+            # retries, schema fallbacks or a second streaming request behind it.
+            if not self._use_legacy:
+                return await self._generate_via_responses(prompt, config)
+            response = await self.async_client.chat.completions.create(
+                **self._build_chat_request_kwargs(self._build_messages(prompt), config))
+            content = self._extract_text_from_response(response)
+            if not content:
+                raise RuntimeError("模型返回空内容，未自动重试，请检查任务记录后重新发起")
+            usage = response.usage
+            return GenerationResult(content=content, token_usage=TokenUsage(usage.prompt_tokens,usage.completion_tokens) if usage else None)
         try:
             base_url = self.settings.base_url or "https://api.openai.com/v1"
             use_responses = not self._use_legacy and base_url not in self.__class__._fallback_to_chat_cache
@@ -158,6 +172,24 @@ class OpenAIProvider(BaseProvider):
         prompt: Prompt,
         config: GenerationConfig
     ) -> AsyncIterator[str]:
+        from application.ai.usage_accounting import has_usage_scope
+        if has_usage_scope():
+            if self._use_legacy:
+                kwargs = self._build_chat_request_kwargs(self._build_messages(prompt),config)
+                kwargs["stream"] = True
+                stream = await self.async_client.chat.completions.create(**kwargs)
+                async for chunk in stream:
+                    if chunk.choices:
+                        text = chunk.choices[0].delta.content
+                        if text:
+                            yield text
+            else:
+                stream = await self.async_client.responses.create(**self._build_responses_request_kwargs(prompt,config,stream=True))
+                async for chunk in stream:
+                    text = self._extract_text_from_responses_chunk(chunk)
+                    if text:
+                        yield text
+            return
         try:
             base_url = self.settings.base_url or "https://api.openai.com/v1"
             use_responses = not self._use_legacy and base_url not in self.__class__._fallback_to_chat_cache
@@ -297,7 +329,7 @@ class OpenAIProvider(BaseProvider):
 
         return GenerationResult(
             content=content,
-            token_usage=TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens)
+            token_usage=TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens) if usage else None
         )
 
     @staticmethod

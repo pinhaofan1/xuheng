@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/about', name: 'About', component: () => import('../views/About.vue') },
     { path: '/book/:slug/workbench', name: 'Workbench', component: Workbench },
     { path: '/book/:slug/cast', name: 'Cast', component: Cast },
+    { path: '/book/:slug/operations', name: 'Operations', component: () => import('../views/Operations.vue') },
     { path: '/book/:slug/chapter/:id', name: 'Chapter', component: Chapter },
     { path: '/book/:slug/review/:id', name: 'EvidenceReview', component: () => import('../views/EvidenceReview.vue') },
     { path: '/book/:slug/characters', name: 'CharacterGraph', component: CharacterGraph },

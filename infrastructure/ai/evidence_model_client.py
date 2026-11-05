@@ -15,6 +15,7 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpe
 from application.audit.evidence_models import text_hash
 from application.audit.services.evidence_review_service import ReviewUnavailable
 from infrastructure.ai.url_utils import normalize_openai_base_url
+from application.ai.usage_accounting import ModelCall
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ class EvidenceModelClient:
             kwargs["extra_headers"] = profile.extra_headers
         if profile.extra_query:
             kwargs["extra_query"] = profile.extra_query
+        call = ModelCall("llm", profile.model, system + user, token_cap)
         try:
             async with httpx.AsyncClient(timeout=min(profile.timeout_seconds, 90), trust_env=False) as transport:
                 async with self.client_factory(
@@ -69,6 +71,8 @@ class EvidenceModelClient:
                     max_retries=0, http_client=transport,
                 ) as client:
                     reply = await client.chat.completions.create(**kwargs)
+            usage = reply.usage
+            call.finish(usage.prompt_tokens if usage else None, usage.completion_tokens if usage else None)
             if not reply.choices:
                 raise ReviewUnavailable("模型没有返回审校内容，请检查模型与网关配置")
             choice = reply.choices[0]
@@ -83,17 +87,25 @@ class EvidenceModelClient:
             return ModelReply(content, getattr(reply, "model", None) or profile.model,
                               usage.prompt_tokens if usage else None, usage.completion_tokens if usage else None)
         except ReviewUnavailable:
+            call.fail()
             raise
         except APITimeoutError as exc:
+            call.fail()
             raise ReviewUnavailable("模型请求超时，未自动重试；请检查服务或缩短章节") from exc
         except APIConnectionError as exc:
+            call.fail()
             raise ReviewUnavailable("无法连接模型接口，请检查本地网络与接口地址") from exc
         except APIStatusError as exc:
+            call.fail()
             messages = {401: "模型服务鉴权失败，请检查 API Key", 403: "模型服务拒绝访问，请检查授权",
                         429: "模型服务限流或余额不足，未自动重试"}
             raise ReviewUnavailable(messages.get(exc.status_code, f"模型服务返回 HTTP {exc.status_code}，请检查模型名与兼容参数")) from exc
         except Exception as exc:
+            call.fail()
             raise ReviewUnavailable("模型调用失败，请检查 OpenAI 兼容配置；凭证不会写入错误信息") from exc
+        except BaseException:
+            call.fail()
+            raise
 
 
 def configured_model(control_service):

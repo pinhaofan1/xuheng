@@ -533,6 +533,7 @@ def get_cast_service() -> CastService:
     return CastService(
         storage_root,
         knowledge_repository=get_knowledge_repository(),
+        db=get_database(),
     )
 
 

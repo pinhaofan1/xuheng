@@ -46,8 +46,9 @@ def main():
         raise SystemExit(f"Missing release files: {sorted(required - files.keys())}")
     output = ROOT / ".release"
     output.mkdir(exist_ok=True)
-    target = output / "Xuheng-browser-0.4.0.zip"
-    manifest = {"product": "Xuheng browser", "version": "0.4.0", "edition": "source + compiled frontend",
+    version = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))["version"]
+    target = output / f"Xuheng-browser-{version}.zip"
+    manifest = {"product": "Xuheng browser", "version": version, "edition": "source + compiled frontend",
                 "upstream": "https://github.com/shenminglinyi/PlotPilot",
                 "baseline": "8dba88fad06368a632522ce6f98e17f9cfc7db2a", "files": {}}
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:

@@ -60,7 +60,7 @@ export interface EvidenceRun {
 export interface HistorySource { id: string; chapter_id: string; chapter_number: number; start: number; end: number; text: string; content_hash: string; score?: number }
 export interface RetrievedHistory { sources: HistorySource[]; mode: string; indexed_chapters: number; indexed_chunks: number; warnings: string[]; scope: string; retrieval_usage?: Record<string, unknown> }
 export interface RetrievalConfig { configured: boolean; base_url: string; embedding_model: string; reranker_model: string; dimensions: number; api_key_configured: boolean; credential_source: string }
-export interface ReviewJob { id: string; status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'; stage: string; run_id: string | null; error: string; cancel_requested: boolean }
+export interface ReviewJob { id: string; novel_id: string; number: number; status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; stage: string; run_id: string | null; error: string; cancel_requested: boolean; created_at: string; updated_at: string; retry_of?: string | null }
 export interface ModelStatus { configured: boolean; model: string; message: string }
 export interface RunHistoryItem { id: string; mode: string; model_name: string; created_at: string; elapsed_ms: number; input_tokens: number | null; output_tokens: number | null }
 const root = (novel: string) => `/evidence-reviews/${encodeURIComponent(novel)}`

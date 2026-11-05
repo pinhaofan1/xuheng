@@ -41,6 +41,7 @@ class OpenAIEmbeddingService(EmbeddingService):
             api_key=_api_key,
             base_url=_base_url,
             http_client=self._http_client,
+            max_retries=0,
         )
         resolved = (model or env.model or "").strip()
         if not resolved:
@@ -72,7 +73,7 @@ class OpenAIEmbeddingService(EmbeddingService):
     async def _probe_dimension(self) -> None:
         if self._dimension > 0:
             return
-        response = await self.client.embeddings.create(model=self.model, input="dim_probe")
+        response = await self._request("dim_probe")
         self._dimension = len(response.data[0].embedding)
 
     async def embed(self, text: str) -> List[float]:
@@ -92,10 +93,7 @@ class OpenAIEmbeddingService(EmbeddingService):
             raise ValueError("Text cannot be empty")
 
         try:
-            response = await self.client.embeddings.create(
-                model=self.model,
-                input=text
-            )
+            response = await self._request(text)
             vec = response.data[0].embedding
             if self._dimension == 0:
                 self._dimension = len(vec)
@@ -123,13 +121,24 @@ class OpenAIEmbeddingService(EmbeddingService):
             raise ValueError("All texts must be non-empty")
 
         try:
-            response = await self.client.embeddings.create(
-                model=self.model,
-                input=texts
-            )
+            response = await self._request(texts)
             result = [item.embedding for item in response.data]
             if self._dimension == 0 and result:
                 self._dimension = len(result[0])
             return result
         except Exception as e:
             raise RuntimeError(f"Failed to generate embeddings: {str(e)}") from e
+
+    async def _request(self, texts):
+        from application.ai.usage_accounting import ModelCall
+        from application.ai.trace_context import get_current_trace
+        trace = get_current_trace()
+        call = ModelCall("embedding", self.model, "\n".join(texts) if isinstance(texts,list) else texts,
+                         novel_id=trace.novel_id if trace else "", operation="创作嵌入")
+        try:
+            result = await self.client.embeddings.create(model=self.model, input=texts)
+            call.finish(getattr(getattr(result,"usage",None),"total_tokens",None), 0)
+            return result
+        except BaseException:
+            call.fail()
+            raise

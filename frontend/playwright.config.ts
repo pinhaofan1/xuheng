@@ -13,7 +13,7 @@ export default defineConfig({
     timeout: 60_000,
   },
   use: {
-    baseURL: process.env.XUHENG_TEST_URL || 'http://127.0.0.1:8005',
+    baseURL: process.env.XUHENG_TEST_URL || 'http://127.0.0.1:8011',
     browserName: 'chromium',
     channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge',
     headless: true,

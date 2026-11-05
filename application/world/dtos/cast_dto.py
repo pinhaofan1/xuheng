@@ -179,3 +179,5 @@ class CastCoverageDTO:
     characters: List[CharacterCoverageDTO]
     bible_not_in_cast: List[BibleCharacterDTO]
     quoted_not_in_cast: List[QuotedTextDTO]
+    chapters_scanned: int = 0
+    content_source: str = "files"

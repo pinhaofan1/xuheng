@@ -11,7 +11,7 @@ import { chapterApi, type ChapterDTO } from '@/api/chapter'
 import { novelApi } from '@/api/novel'
 import { useAppSettingsShellStore } from '@/stores/appSettingsShellStore'
 
-const props = defineProps<{ section: 'library' | 'review'; novelId?: string; chapterNumber?: number }>()
+const props = defineProps<{ section: 'library' | 'review' | 'operations'; novelId?: string; chapterNumber?: number }>()
 defineEmits<{ create: []; refresh: [] }>()
 const route = useRoute()
 const settings = useAppSettingsShellStore()
@@ -47,7 +47,8 @@ watch(() => route.fullPath, () => { open.value = false })
       <template v-if="novelId">
         <p class="xh-nav-label xh-project-title" :title="bookTitle">{{ bookTitle || '当前作品' }}</p>
         <router-link :to="`${workbench}?chapter=${chapterNumber || 1}`" class="xh-nav-item"><AppIcon name="write" />章节创作</router-link>
-        <router-link :to="`/book/${novelId}/review/${chapterNumber || 1}`" class="xh-nav-item active" aria-current="page"><AppIcon name="review" />一致性审校</router-link>
+        <router-link :to="`/book/${novelId}/review/${chapterNumber || 1}`" class="xh-nav-item" :class="{active: section === 'review'}" :aria-current="section === 'review' ? 'page' : undefined"><AppIcon name="review" />一致性审校</router-link>
+        <router-link :to="`/book/${novelId}/operations`" class="xh-nav-item" :class="{active: section === 'operations'}" :aria-current="section === 'operations' ? 'page' : undefined"><AppIcon name="history" />任务与用量</router-link>
         <router-link :to="`${workbench}?panel=bible`" class="xh-nav-item"><AppIcon name="people" />人物与设定</router-link>
         <router-link :to="`${workbench}?panel=worldbuilding`" class="xh-nav-item"><AppIcon name="globe" />世界观与知识</router-link>
         <p class="xh-nav-label xh-chapter-label">章节目录 <span>{{ chapters.length }}</span></p>

@@ -89,7 +89,7 @@ async function load() {
   try {
     const [config, chapter, latest] = await Promise.all([
       evidenceReviewApi.rules(novel.value), chapterApi.getChapter(novel.value, number.value),
-      evidenceReviewApi.latest(novel.value, number.value, mode.value),
+      typeof route.query.run === 'string' ? evidenceReviewApi.getRun(novel.value, route.query.run) : evidenceReviewApi.latest(novel.value, number.value, mode.value),
     ])
     if (sequence !== loadSequence || key !== routeKey.value) return
     rules.value = config
@@ -277,7 +277,7 @@ function schedulePoll(id: string, key: string, failures = 0) {
         runHistory.value = history
         panel.value = 'results'
         message.success('AI 审校完成，引用已核对')
-      } else if (result.status === 'failed') notice.value = result.error || '任务未完成，可检查配置后重试'
+      } else if (result.status === 'failed' || result.status === 'interrupted') notice.value = result.error || '任务未完成，可在任务与用量中查看并重新发起'
     } catch (error) {
       if (key !== routeKey.value) return
       if (failures < 2) schedulePoll(id, key, failures + 1)

@@ -41,7 +41,7 @@
             <n-spin :show="covLoading" size="small">
               <template v-if="coverage">
                 <n-text depth="3" class="cov-meta">
-                  已扫描 {{ coverage.chapter_files_scanned }} 个章节文件
+                  已核对 {{ coverage.chapters_scanned ?? coverage.chapter_files_scanned }} 章{{ coverage.content_source === 'database' ? '已保存正文' : '章节文件' }}
                   <template v-if="chapterFilter != null"> · 当前筛选第 {{ chapterFilter }} 章</template>
                 </n-text>
 
@@ -241,6 +241,8 @@ const triplesDrawerFocus = ref('')
 const triplesDrawerKey = ref(0)
 
 interface CastCoveragePayload {
+  chapters_scanned?: number
+  content_source?: string
   chapter_files_scanned: number
   characters: Array<{ id: string; name: string; mentioned: boolean; chapter_ids: number[] }>
   bible_not_in_cast: Array<{

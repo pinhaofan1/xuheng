@@ -138,6 +138,7 @@ class CastService:
         storage_root: Path,
         knowledge_repository: Optional["KnowledgeRepository"] = None,
         runtime_settings: Optional[CastRuntimeSettings] = None,
+        db=None,
     ):
         """Initialize service
 
@@ -147,6 +148,7 @@ class CastService:
         """
         self.storage_root = storage_root
         self._knowledge_repository = knowledge_repository
+        self._coverage_db = db if db is not None else getattr(knowledge_repository, "db", None)
         self._runtime_settings = runtime_settings or get_cast_runtime_settings()
         # 同一小说在短时间内大量 API（如逐个拉 character-psyches）会重复全量构图；TTL 缓存降低 SQLite 与 CPU 压力。
         self._graph_cache_lock = threading.Lock()
@@ -499,6 +501,40 @@ class CastService:
         return CastSearchResultDTO.from_domain_lists(matched_chars, matched_rels)
 
     def get_cast_coverage(self, novel_id: str) -> CastCoverageDTO:
+        """Read saved manuscript content, never stale exported files when DB exists."""
+        db = self._coverage_db
+        if db is None:
+            result = self._get_file_cast_coverage(novel_id)
+            result.chapters_scanned = result.chapter_files_scanned
+            result.content_source = "files"
+            return result
+        graph = self.get_cast_graph(novel_id)
+        chapters = db.fetch_all("SELECT number,content FROM chapters WHERE novel_id=? AND trim(coalesce(content,''))<>'' ORDER BY number", (novel_id,))
+        names = {name for person in graph.characters for name in [person.name, *person.aliases] if name}
+        def mentions(terms):
+            return sorted({int(ch["number"]) for ch in chapters if any(term and term in ch["content"] for term in terms)})
+        characters = []
+        for person in graph.characters:
+            numbers = mentions([person.name, *person.aliases])
+            characters.append(CharacterCoverageDTO(id=person.id, name=person.name, mentioned=bool(numbers), chapter_ids=numbers))
+        missing = []
+        bible_exists = db.fetch_one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_characters'")
+        bible_people = db.fetch_all("SELECT name FROM bible_characters WHERE novel_id=? ORDER BY name", (novel_id,)) if bible_exists else []
+        for person in bible_people:
+            if person["name"] and person["name"] not in names:
+                numbers = mentions([person["name"]])
+                missing.append(BibleCharacterDTO(name=person["name"], role="", in_novel_text=bool(numbers), chapter_ids=numbers))
+        quoted = {}
+        for chapter in chapters:
+            for text in re.findall(r'「([^」]+)」', chapter["content"]):
+                if text not in names:
+                    quoted.setdefault(text, set()).add(int(chapter["number"]))
+        return CastCoverageDTO(chapter_files_scanned=0, chapters_scanned=len(chapters), content_source="database",
+            characters=characters, bible_not_in_cast=missing,
+            quoted_not_in_cast=[QuotedTextDTO(text=text, count=len(numbers), chapter_ids=sorted(numbers))
+                                for text,numbers in sorted(quoted.items(), key=lambda item: (-len(item[1]),item[0]))])
+
+    def _get_file_cast_coverage(self, novel_id: str) -> CastCoverageDTO:
         """分析人物覆盖率
 
         Args:

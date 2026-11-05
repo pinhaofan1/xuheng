@@ -8,6 +8,7 @@ import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from application.audit.evidence_models import AIReviewRequest, FeedbackRequest, HistorySearchRequest, RuleSet, RunReviewRequest, text_hash
 from application.audit.services.evidence_review_service import (
@@ -123,7 +124,8 @@ def history_context(novel_id: str, request: HistorySearchRequest, number: int = 
 @router.post("/{novel_id}/chapters/{number}/ai", status_code=202)
 def start_ai_review(novel_id: str, request: AIReviewRequest, number: int = Path(ge=1),
                      service: EvidenceReviewService = Depends(get_evidence_review_service)):
-    from application.audit.services.review_jobs import review_jobs
+    from application.audit.services.review_jobs import get_review_jobs
+    review_jobs = get_review_jobs()
     def operation():
         chapter = service.store.get_chapter(novel_id, number=number)
         if request.expected_content is not None and request.expected_content != (chapter["content"] or ""):
@@ -132,13 +134,15 @@ def start_ai_review(novel_id: str, request: AIReviewRequest, number: int = Path(
         if active:
             return active
         ai_service = get_ai_review_service(service.store)
-        return review_jobs.start(novel_id, number, lambda progress, cancelled: asyncio.run(ai_service.run(novel_id, number, request, progress, cancelled)))
+        saved = {**request.model_dump(exclude={"expected_content"}), "content_hash": text_hash(chapter["content"] or "")}
+        return review_jobs.start(novel_id, number, lambda progress, cancelled: asyncio.run(ai_service.run(novel_id, number, request, progress, cancelled)), request=saved)
     return _call(operation)
 
 
 @router.get("/{novel_id}/chapters/{number}/active-job")
 def active_job(novel_id: str, number: int = Path(ge=1), service: EvidenceReviewService = Depends(get_evidence_review_service)):
-    from application.audit.services.review_jobs import review_jobs
+    from application.audit.services.review_jobs import get_review_jobs
+    review_jobs = get_review_jobs()
     def operation():
         service.store.get_chapter(novel_id, number=number)
         return review_jobs.active(novel_id, number)
@@ -147,14 +151,86 @@ def active_job(novel_id: str, number: int = Path(ge=1), service: EvidenceReviewS
 
 @router.get("/{novel_id}/jobs/{job_id}")
 def get_job(novel_id: str, job_id: str):
-    from application.audit.services.review_jobs import review_jobs
+    from application.audit.services.review_jobs import get_review_jobs
+    review_jobs = get_review_jobs()
     return _call(lambda: review_jobs.get(novel_id, job_id))
 
 
 @router.post("/{novel_id}/jobs/{job_id}/cancel")
 def cancel_job(novel_id: str, job_id: str):
-    from application.audit.services.review_jobs import review_jobs
+    from application.audit.services.review_jobs import get_review_jobs
+    review_jobs = get_review_jobs()
     return _call(lambda: review_jobs.cancel(novel_id, job_id))
+
+
+class ModelPrice(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    kind: Literal["llm", "embedding", "rerank"]
+    model: str = Field(min_length=1, max_length=200)
+    input_per_million: float = Field(ge=0, le=1_000_000)
+    output_per_million: float = Field(ge=0, le=1_000_000)
+
+
+class UsagePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    max_calls: int | None = Field(default=None, ge=0, le=10_000_000)
+    max_tokens: int | None = Field(default=None, ge=0, le=1_000_000_000_000)
+    max_cost: float | None = Field(default=None, ge=0, le=1_000_000)
+    prices: list[ModelPrice] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_prices(self):
+        keys = [(p.kind,p.model) for p in self.prices]
+        if len(keys) != len(set(keys)):
+            raise ValueError("同一模型的单价不能重复")
+        return self
+
+
+@router.get("/{novel_id}/operations")
+def operations(novel_id: str, service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    from application.audit.services.review_jobs import get_review_jobs
+    from infrastructure.persistence.operation_journal import get_operation_journal
+    def operation():
+        service.store.require_novel(novel_id)
+        result = get_operation_journal().summary(novel_id)
+        result["jobs"] = get_review_jobs().history(novel_id)
+        return result
+    return _call(operation)
+
+
+@router.put("/{novel_id}/operations/policy")
+def save_usage_policy(novel_id: str, request: UsagePolicy, service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    from infrastructure.persistence.operation_journal import get_operation_journal
+    def operation():
+        service.store.require_novel(novel_id)
+        return get_operation_journal().save_policy(novel_id, request.model_dump())
+    return _call(operation)
+
+
+@router.post("/{novel_id}/jobs/{job_id}/retry", status_code=202)
+def retry_job(novel_id: str, job_id: str, service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    from application.audit.services.review_jobs import get_review_jobs
+    from infrastructure.persistence.operation_journal import get_operation_journal
+    def operation():
+        manager = get_review_jobs()
+        old = manager.get(novel_id, job_id)
+        if old["status"] not in {"interrupted", "failed", "cancelled"}:
+            raise ReviewConflict("只有中断、失败或取消的任务可以重新发起")
+        child = manager.find_retry(novel_id,job_id)
+        if child:
+            return child
+        chapter = service.store.get_chapter(novel_id, number=old["number"])
+        saved = get_operation_journal().job_request(novel_id, job_id)
+        if saved.get("content_hash") != text_hash(chapter["content"] or ""):
+            raise ReviewConflict("正文已变化，请打开章节检查后重新审校")
+        request = AIReviewRequest(**{k:v for k,v in saved.items() if k != "content_hash"}, expected_content=chapter["content"] or "")
+        active = manager.active(novel_id, old["number"])
+        if active:
+            return active
+        ai_service = get_ai_review_service(service.store)
+        return manager.start(novel_id, old["number"], lambda progress,cancelled: asyncio.run(ai_service.run(novel_id, old["number"], request, progress, cancelled)),
+                             request=saved, retry_of=job_id)
+    return _call(operation)
 
 
 @router.get("/{novel_id}/chapters/{number}/runs")

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from application.audit.evidence_models import AI_ENGINE_VERSION, AIReviewRequest, RuleSet, text_hash
 from application.audit.services.evidence_review_service import ReviewConflict, ReviewUnavailable
+from application.ai.usage_accounting import account_for_book
 
 
 class ModelFinding(BaseModel):
@@ -107,6 +108,7 @@ class AIEvidenceReviewService:
     def __init__(self, store, retriever, model_client):
         self.store, self.retriever, self.model_client = store, retriever, model_client
 
+    @account_for_book("AI 一致性审校")
     async def run(self, novel_id: str, number: int, request: AIReviewRequest, progress=lambda stage: None, cancelled=lambda: False) -> dict:
         started = perf_counter()
         chapter = self.store.get_chapter(novel_id, number=number)
@@ -138,8 +140,9 @@ class AIEvidenceReviewService:
         from application.audit.services.history_retrieval import bounded_history, history_digest
         if history_digest(bounded_history(self.store.history_rows(novel_id, number))) != retrieved["context_hash"]:
             warnings.append("检索期间历史正文发生变化，本次结果已过期，请重新审校")
+        from application.audit.services.review_jobs import current_review_job
         run = {
-            "id": uuid4().hex, "novel_id": novel_id, "chapter_id": chapter["id"], "chapter_number": number,
+            "id": current_review_job.get() or uuid4().hex, "novel_id": novel_id, "chapter_id": chapter["id"], "chapter_number": number,
             "content_hash": text_hash(content), "content_snapshot": content, "rules_hash": rules.content_hash(),
             "engine_version": f"{AI_ENGINE_VERSION}:{self.model_client.fingerprint}:{uuid4().hex}",
             "mode": "ai", "context_hash": retrieved["context_hash"], "model_name": reply.model,

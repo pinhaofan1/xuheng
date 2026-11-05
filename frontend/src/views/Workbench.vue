@@ -221,6 +221,7 @@ const currentChapter = computed(() => {
 })
 const reviewChapter = computed(() => currentChapterId.value || chapters.value[0]?.number)
 const workspaceTools = [
+  { label: '任务与用量', key: 'operations' },
   { label: '世界观', key: 'worldbuilding' }, { label: '知识库', key: 'knowledge' },
   { label: '伏笔账本', key: 'foreshadow' }, { label: '故事演进', key: 'story-evolution' },
   { label: '角色档案', key: 'sandbox' }, { type: 'divider', key: 'divider' },
@@ -228,7 +229,7 @@ const workspaceTools = [
 ]
 function openReferencePanel(panel: string) { rightCollapsed.value = false; onSettingsPanelChange(panel) }
 function openWorkspaceTool(key: string) {
-  if (key === 'characters' || key === 'location-graph') void router.push(`/book/${slug.value}/${key}`)
+  if (key === 'characters' || key === 'location-graph' || key === 'operations') void router.push(`/book/${slug.value}/${key}`)
   else openReferencePanel(key)
 }
 function syncPanelFromRoute() {

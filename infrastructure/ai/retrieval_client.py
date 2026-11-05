@@ -31,6 +31,10 @@ class RetrievalHTTPClient:
         self.usage_available = {'embedding': True, 'rerank': True}
 
     async def _post(self, endpoint: str, body: dict) -> dict:
+        from application.ai.usage_accounting import ModelCall
+        import json
+        kind = 'embedding' if endpoint == 'embeddings' else 'rerank'
+        call = ModelCall(kind, body['model'], json.dumps(body, ensure_ascii=False))
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(45, connect=10), trust_env=False,
                                          transport=self.transport) as client:
@@ -44,6 +48,7 @@ class RetrievalHTTPClient:
             if not isinstance(usage, dict):
                 usage = {}
             tokens = usage.get('prompt_tokens', usage.get('input_tokens', usage.get('total_tokens')))
+            call.finish(tokens, 0)
             kind = 'embedding' if endpoint == 'embeddings' else 'rerank'
             self.calls[kind] += 1
             if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0:
@@ -52,12 +57,17 @@ class RetrievalHTTPClient:
                 self.usage_available[kind] = False
             return data
         except httpx.HTTPStatusError as exc:
+            call.fail()
             status = exc.response.status_code
             message = {401: '鉴权失败，请检查 API Key', 403: '账户无权使用所选模型',
                        429: '限流或额度不足，未自动重试'}.get(status, f'服务返回 HTTP {status}，请检查模型名称与参数')
             raise ReviewUnavailable(f'检索模型{message}') from None
         except (httpx.HTTPError, ValueError, TypeError):
+            call.fail()
             raise ReviewUnavailable('检索模型连接或响应无效，未自动重试；请检查接口配置') from None
+        except BaseException:
+            call.fail()
+            raise
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts or len(texts) > 32 or any(not t.strip() or len(t) > 8000 for t in texts):

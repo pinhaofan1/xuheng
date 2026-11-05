@@ -34,6 +34,10 @@ async def _has_persisted_macro_structure(host: Any, novel_id: str) -> bool:
     return any(getattr(getattr(node, "node_type", None), "value", "") == "volume" for node in nodes)
 
 
+from application.ai.usage_accounting import account_runtime
+
+
+@account_runtime
 async def process_novel(host: Any, novel: Novel) -> None:
     """处理单个小说（全流程状态机路由）"""
     try:

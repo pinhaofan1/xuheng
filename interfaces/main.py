@@ -180,6 +180,8 @@ def create_app(app_settings: BackendSettings | None = None) -> FastAPI:
     async def lifespan(lifespan_app: FastAPI):
         _get_lifecycle().startup(len(lifespan_app.routes))
         try:
+            from application.audit.services.review_jobs import get_review_jobs
+            get_review_jobs()
             yield
         finally:
             _get_lifecycle().shutdown()

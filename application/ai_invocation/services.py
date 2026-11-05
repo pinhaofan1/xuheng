@@ -8,6 +8,7 @@ from dataclasses import replace
 from typing import Any, Callable, Mapping
 
 from domain.ai.services.llm_service import GenerationConfig, LLMService
+from application.ai.usage_accounting import usage_scope
 from application.ai_invocation.continuation import ContinuationContext, execute_continuation
 from application.ai_invocation.dtos import (
     AdoptionCommit,
@@ -94,7 +95,8 @@ class AttemptService:
         session.attempts.append(attempt.id)
         session.status = InvocationSessionStatus.GENERATING
         try:
-            result = await self._llm_service.generate(prompt_snapshot.prompt, config or GenerationConfig())
+            with usage_scope(str(session.context.get("novel_id") or ""), operation=session.operation):
+                result = await self._llm_service.generate(prompt_snapshot.prompt, config or GenerationConfig())
             attempt.content = result.content
             attempt.token_usage = result.token_usage
             attempt.status = InvocationAttemptStatus.SUCCEEDED
@@ -125,16 +127,17 @@ class AttemptService:
         content_parts: list[str] = []
         stopped = False
         try:
-            async for chunk in self._llm_service.stream_generate(prompt_snapshot.prompt, config or GenerationConfig()):
-                if not chunk:
-                    continue
-                content_parts.append(chunk)
-                attempt.content = "".join(content_parts)
-                if on_chunk is not None:
-                    keep_going = on_chunk(chunk, attempt.content)
-                    if keep_going is False:
-                        stopped = True
-                        break
+            with usage_scope(str(session.context.get("novel_id") or ""), operation=session.operation):
+                async for chunk in self._llm_service.stream_generate(prompt_snapshot.prompt, config or GenerationConfig()):
+                    if not chunk:
+                        continue
+                    content_parts.append(chunk)
+                    attempt.content = "".join(content_parts)
+                    if on_chunk is not None:
+                        keep_going = on_chunk(chunk, attempt.content)
+                        if keep_going is False:
+                            stopped = True
+                            break
             attempt.content = "".join(content_parts)
             attempt.token_usage = None
             if stopped:

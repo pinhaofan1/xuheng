@@ -89,12 +89,16 @@ def bm25(chunks: list[dict], query: str) -> list[dict]:
     return sorted(ranked, key=lambda c: (-c["score"], -c["chapter_number"], c["start"]))
 
 
+from application.ai.usage_accounting import account_for_book
+
+
 class HistoricalRetriever:
     def __init__(self, store, embedding_factory: Callable | None = None, reranker_factory: Callable | None = None):
         self.store = store
         self.embedding_factory = embedding_factory
         self.reranker_factory = reranker_factory
 
+    @account_for_book("历史检索")
     async def retrieve(self, novel_id: str, number: int, query: str, limit: int = 6, semantic: bool = False,
                        retrieval_mode: str = 'bm25', progress=lambda stage: None, cancelled=lambda: False) -> dict:
         if retrieval_mode not in {'bm25', 'hybrid', 'hybrid_rerank'}:

@@ -37,12 +37,15 @@ from interfaces.api.v1.audit import evidence_review_routes as routes
 class BrowserFixtureModel:
     fingerprint = "browser-test-fixture-not-a-real-provider"
     async def complete(self, system, user, output_tokens):
+        from application.ai.usage_accounting import ModelCall
+        call = ModelCall("llm", "fixture-test-only", system+user, output_tokens)
         await asyncio.sleep(.2)
         payload = json.loads(user)
         source = next(s for s in payload["history_sources"] if "左臂已经断了" in s["text"])
         valid = {"entity_id": "shen", "issue_type": "state", "description": "左臂状态疑似不一致，需要确认是否存在康复情节。",
                  "target_quote": "沈澜抬起左臂", "source_id": source["id"], "source_quote": "左臂已经断了", "certainty": "conflict"}
         forged = {**valid, "target_quote": "正文里从未出现的这句话"}
+        call.finish(111,42)
         return ModelReply(json.dumps({"summary": "浏览器测试响应，非真实模型结果。", "issues": [valid, forged]}, ensure_ascii=False),
                           "fixture-test-only", 111, 42)
 
@@ -60,6 +63,14 @@ def main():
                 tx.execute("INSERT INTO chapters(id,novel_id,number,title,content) VALUES (?,'ai-browser-fixture',?,'断臂与潮声',?)", (f"fixture-{number}", number, content))
         store = EvidenceReviewStore(db)
         store.save_rules("ai-browser-fixture", RuleSet(profiles=[CharacterRule(id="shen", name="沈澜", allowed_magic=["水系"])]))
+    # Seed an interrupted request to verify restart recovery in the real UI.
+    from infrastructure.persistence.operation_journal import get_operation_journal, now
+    from application.audit.evidence_models import text_hash
+    journal = get_operation_journal()
+    journal.save_job({"id":"fixture-interrupted", "novel_id":"ai-browser-fixture", "number":2,
+        "status":"running", "stage":"等待模型", "created_at":now(), "updated_at":now(),
+        "run_id":None, "error":"", "cancel_requested":False},
+        {"content_hash":text_hash("沈澜抬起左臂，指向远方。"),"output_tokens":2048,"retrieval_mode":"bm25"})
     evidence_model_client.configured_model = lambda control: {"configured": True, "model": "fixture-test-only", "protocol": "openai", "host": "fixture", "message": "仅用于浏览器测试，非真实模型"}
     routes.get_ai_review_service = lambda store: AIEvidenceReviewService(store, HistoricalRetriever(store), BrowserFixtureModel())
     from interfaces.main import app

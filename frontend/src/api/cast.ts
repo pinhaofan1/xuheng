@@ -62,6 +62,8 @@ export interface QuotedText {
 }
 
 export interface CastCoverage {
+  chapters_scanned: number
+  content_source: 'database' | 'files'
   chapter_files_scanned: number
   characters: CharacterCoverage[]
   bible_not_in_cast: BibleCharacter[]
