@@ -9,6 +9,7 @@ import { formatApiError } from '@/utils/apiError'
 import WorkspaceNav from '@/components/layout/WorkspaceNav.vue'
 import AppIcon from '@/components/layout/AppIcon.vue'
 import RetrievalSettings from '@/components/global/RetrievalSettings.vue'
+import SearchIndexControls from '@/components/SearchIndexControls.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -357,7 +358,8 @@ onBeforeRouteUpdate((to, from) => to.params.id !== from.params.id || to.params.s
             <button v-for="item in panels" :key="item.value" :id="`review-tab-${item.value}`" type="button" role="tab" :aria-selected="panel === item.value" :aria-controls="`review-panel-${item.value}`" :tabindex="panel === item.value ? 0 : -1" @click="panel = item.value" @keydown="onPanelKeyDown">{{ item.label }}</button>
           </div>
           <div v-if="panel === 'history'" id="review-panel-history" role="tabpanel" aria-labelledby="review-tab-history" class="history-pane">
-            <n-input v-model:value="retrievalQuery" placeholder="人物、地点或情节；留空按当前正文检索" aria-label="历史检索内容" :maxlength="8000" />
+            <SearchIndexControls :novel="novel" />
+            <n-input v-model:value="retrievalQuery" placeholder="人物、地点或情节；留空按当前正文检索" :input-props="{ 'aria-label': '历史检索内容' }" :maxlength="8000" />
             <n-button block secondary :loading="retrieving" :disabled="disabled || retrieving" @click="retrieveHistory">检索历史正文</n-button>
             <template v-if="retrieval">
               <p class="muted">{{ retrieval.indexed_chapters }} 章 · {{ retrieval.indexed_chunks }} 个片段 · {{ retrievalLabels[retrieval.mode] || retrieval.mode }}</p>

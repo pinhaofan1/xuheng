@@ -1,6 +1,7 @@
 """Package the browser source and compiled UI, excluding all local user data."""
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
@@ -31,6 +32,9 @@ def allowed(name: str) -> bool:
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output-dir', type=Path, default=ROOT/'.release')
+    args = parser.parse_args()
     dist = ROOT / "frontend/dist"
     if not (dist / "index.html").is_file():
         raise SystemExit("Build frontend first: cd frontend; npm ci; npm run build")
@@ -45,8 +49,8 @@ def main():
                 "scripts/evaluation/baseline_conflict_service.txt"}
     if not required <= files.keys():
         raise SystemExit(f"Missing release files: {sorted(required - files.keys())}")
-    output = ROOT / ".release"
-    output.mkdir(exist_ok=True)
+    output = args.output_dir.resolve()
+    output.mkdir(parents=True, exist_ok=True)
     version = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))["version"]
     target = output / f"Xuheng-browser-{version}.zip"
     manifest = {"product": "Xuheng browser", "version": version, "edition": "source + compiled frontend",

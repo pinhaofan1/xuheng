@@ -147,8 +147,8 @@ class EvidenceReviewService:
         if chapter["number"] != run["chapter_number"]:
             reasons.append("章节编号已调整")
         if ai:
-            from application.audit.services.history_retrieval import bounded_history, history_digest
-            digest = history_digest(bounded_history(self.store.history_rows(run["novel_id"], chapter["number"])))
+            from application.audit.services.history_retrieval import current_history_digest
+            digest = current_history_digest(self.store, run['novel_id'], chapter['number'], run.get('context_hash'))
             if digest != run.get("context_hash"):
                 reasons.append("历史正文或章节顺序已变化")
         return {

@@ -58,6 +58,7 @@ def register_api_routes(app: FastAPI) -> None:
         chapter_review_routes,
         evidence_review_routes,
         macro_refactor,
+        search_index_routes,
     )
     from interfaces.api.v1.blueprint import (
         beat_sheet_routes,
@@ -106,6 +107,7 @@ def register_api_routes(app: FastAPI) -> None:
         app,
         (
             RouterRegistration(novels.router, API_V1_PREFIX),
+            RouterRegistration(search_index_routes.router, API_V1_PREFIX),
             RouterRegistration(backup_routes.router, API_V1_PREFIX),
             RouterRegistration(taxonomy_routes.router, API_V1_PREFIX),
             RouterRegistration(chapters.router, NOVELS_API_PREFIX),

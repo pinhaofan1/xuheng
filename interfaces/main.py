@@ -184,9 +184,15 @@ def create_app(app_settings: BackendSettings | None = None) -> FastAPI:
             get_review_jobs()
             import asyncio
             from application.engine.services.durable_aftermath import poll_aftermath_tasks
+            from interfaces.api.v1.audit.search_index_routes import poll_search_index
             aftermath_worker = asyncio.create_task(poll_aftermath_tasks())
+            index_stop = asyncio.Event()
+            index_worker = asyncio.create_task(poll_search_index(index_stop))
             yield
         finally:
+            if 'index_worker' in locals():
+                index_stop.set()
+                await index_worker
             if 'aftermath_worker' in locals():
                 aftermath_worker.cancel()
                 try:

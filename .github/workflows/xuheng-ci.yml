@@ -6,7 +6,11 @@ on:
 
 jobs:
   review-extension:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,3 +38,17 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Install browser for UI regression
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run browser regression
+        working-directory: frontend
+        env:
+          XUHENG_TEST_PYTHON: python
+          PLAYWRIGHT_CHANNEL: chromium
+        run: npm run test:e2e
+      - name: Build and inspect the delivery archive
+        run: python scripts/package_xuheng.py
+      - name: Start and restore the unpacked browser edition
+        shell: bash
+        run: python scripts/smoke_xuheng_package.py .release/Xuheng-browser-*.zip

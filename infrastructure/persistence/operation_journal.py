@@ -15,6 +15,7 @@ import sqlite3
 from threading import Lock
 from uuid import uuid4
 from infrastructure.persistence.usage_ledger import DEFAULT_POLICY, UsageLedger, create_ledger_schema, day_window, validate_timezone
+from infrastructure.persistence.validation_budget import ValidationBudget, create_validation_budget_schema
 
 _schema_lock = Lock()
 
@@ -29,7 +30,7 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
-class OperationJournal(UsageLedger):
+class OperationJournal(UsageLedger, ValidationBudget):
     def __init__(self, path):
         self.path = str(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -65,6 +66,7 @@ class OperationJournal(UsageLedger):
                 );
             """)
             create_ledger_schema(conn)
+            create_validation_budget_schema(conn)
 
     @contextmanager
     def connection(self):
@@ -134,6 +136,9 @@ class OperationJournal(UsageLedger):
             totals = self._totals(conn, novel_id)
             daily = self._totals(conn, novel_id, window)
             price = next((p for p in policy["prices"] if p["kind"] == kind and p["model"] == model), None)
+            validation = self._validation_admission(conn,novel_id,kind,model,input_bound,output_bound)
+            if validation is not None:
+                price = validation[2]
             cost = (input_bound * price["input_per_million"] + output_bound * price["output_per_million"]) / 1_000_000 if price else None
             if policy["max_cost"] is not None and (cost is None or totals["unknown_cost_calls"]):
                 raise BudgetExceeded("已设置金额预算，但有模型未配置单价或历史请求费用未知；请补充单价，或改用请求数/Token 上限")
@@ -153,6 +158,8 @@ class OperationJournal(UsageLedger):
                     raise BudgetExceeded(f"本次请求将超过作品每日{label}预算，已在发送前停止；按 {policy['timezone']} 零点重置，恢复任务需要手动操作", window["end"])
             conn.execute("INSERT INTO calls(id,novel_id,kind,model,status,created_at,updated_at,reserved_tokens,reserved_cost,operation,prices_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                          (request_id, novel_id, kind, model, "running", stamp, stamp, input_bound+output_bound, cost, operation, json.dumps(price) if price else None))
+            if validation is not None:
+                conn.execute('INSERT INTO validation_budget_calls VALUES (?,?,?)',(request_id,*validation[:2]))
         return request_id
 
     def finish(self, request_id, input_tokens=None, output_tokens=None, status="completed", error=""):

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 from pathlib import Path
+import os
 
 _scope = ContextVar("xuheng_usage_scope", default=None)
 _one_request = ContextVar("xuheng_one_provider_request", default=False)
@@ -98,12 +99,15 @@ class ModelCall:
             bound.failure = RuntimeError("本地章后事务内不允许远端模型或检索请求")
             raise bound.failure
         work = current_work.get()
-        work_key = work.charge_key() if work is not None else None
         self.id = None
         scope = _scope.get()
         if scope is None and novel_id:
             from infrastructure.persistence.operation_journal import get_operation_journal
             scope = (novel_id, get_operation_journal(), operation)
+        strict_validation = os.environ.get('XUHENG_VALIDATION_BUDGET_REQUIRED') == '1'
+        if strict_validation and scope is None:
+            from infrastructure.persistence.operation_journal import BudgetExceeded
+            raise BudgetExceeded('隔离验收请求缺少作品与累计预算归属，已在发送前停止')
         if scope:
             novel, self.journal, label = scope
             if self.journal is None:
@@ -111,6 +115,9 @@ class ModelCall:
                 self.journal = get_operation_journal()
             # UTF-8 bytes plus framing are a conservative local estimate. It is
             # not a provider tokenizer or a guarantee against provider overbilling.
+            if strict_validation:
+                self.journal.assert_validation_book(novel)
+            work_key = work.charge_key() if work is not None else None
             try:
                 self.id = self.journal.reserve(novel, kind, model, len(text.encode("utf-8"))+512, output_bound, label)
             except BaseException:

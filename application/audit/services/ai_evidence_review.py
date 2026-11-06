@@ -137,8 +137,8 @@ class AIEvidenceReviewService:
             return {"cancelled": True}
         progress("核对原文证据")
         issues, uncertain, warnings, summary = validate_model_review(content, rules, sources, reply.content)
-        from application.audit.services.history_retrieval import bounded_history, history_digest
-        if history_digest(bounded_history(self.store.history_rows(novel_id, number))) != retrieved["context_hash"]:
+        from application.audit.services.history_retrieval import current_history_digest
+        if current_history_digest(self.store, novel_id, number, retrieved['context_hash']) != retrieved['context_hash']:
             warnings.append("检索期间历史正文发生变化，本次结果已过期，请重新审校")
         from application.audit.services.review_jobs import current_review_job
         run = {

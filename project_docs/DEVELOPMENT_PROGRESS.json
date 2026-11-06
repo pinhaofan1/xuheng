@@ -1,6 +1,6 @@
 {
   "version": "0.10.0",
-  "updated_at": "2026-11-05",
+  "updated_at": "2026-11-07",
   "next_order": [
     "F04",
     "F02",
@@ -166,7 +166,7 @@
       "group": "next",
       "priority": "P0",
       "title": "真实模型完整多章托管验收",
-      "status": "todo",
+      "status": "in_progress",
       "kind": "verification",
       "acceptance": "隔离作品在明确预算内连续至少 10 章并跨幕，包含完整规划和章后模型调用；暂停、限流、断网、重启及章数/预算停止留存报告。",
       "evidence": []
@@ -245,7 +245,7 @@
       "group": "next",
       "priority": "P1",
       "title": "后台增量索引与删除清理",
-      "status": "todo",
+      "status": "in_progress",
       "kind": "feature",
       "acceptance": "章节新增、修改、删除只更新受影响索引；可查看进度、取消及恢复，旧向量与缓存不残留。",
       "evidence": []
@@ -255,7 +255,7 @@
       "group": "next",
       "priority": "P1",
       "title": "超长篇分层历史召回",
-      "status": "todo",
+      "status": "in_progress",
       "kind": "feature",
       "acceptance": "在超过 100 章、50 万字符的作品上验证历史召回；结合全文与摘要，引用仍可定位到原文，记录性能与成本。",
       "evidence": []
@@ -311,7 +311,7 @@
       "group": "next",
       "priority": "P2",
       "title": "跨平台 CI 与发布一致性",
-      "status": "todo",
+      "status": "in_progress",
       "kind": "verification",
       "acceptance": "Windows/Linux 的后端、构建和浏览器检查有 CI 结果；版本号、文档和交付包一致，干净环境可复现。",
       "evidence": []

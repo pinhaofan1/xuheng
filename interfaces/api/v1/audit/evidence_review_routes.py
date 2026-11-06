@@ -91,8 +91,9 @@ def _embedding_factory():
 def get_historical_retriever(store):
     from application.audit.services.history_retrieval import HistoricalRetriever
     from application.ai.retrieval_config_service import RetrievalConfigService
+    from infrastructure.persistence.database.search_index_store import SearchIndexStore
     config = RetrievalConfigService(store.db)
-    return HistoricalRetriever(store, config.embedding_factory, config.client)
+    return HistoricalRetriever(store, config.embedding_factory, config.client, index_store=SearchIndexStore(store.db))
 
 
 def get_ai_review_service(store):

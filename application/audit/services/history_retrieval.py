@@ -39,6 +39,13 @@ def history_digest(rows: list[dict]) -> str:
     return text_hash(json.dumps([(r["id"], r["number"], r["content_hash"]) for r in rows], ensure_ascii=False))
 
 
+def current_history_digest(store, novel_id, number, previous):
+    if (previous or '').startswith('index-v1:'):
+        from infrastructure.persistence.database.search_index_store import SearchIndexStore
+        return SearchIndexStore(store.db).context_digest(novel_id, number)
+    return history_digest(bounded_history(store.history_rows(novel_id, number)))
+
+
 def split_chapter(row: dict) -> list[dict]:
     text = row["content"]
     chunks = []
@@ -93,10 +100,11 @@ from application.ai.usage_accounting import account_for_book
 
 
 class HistoricalRetriever:
-    def __init__(self, store, embedding_factory: Callable | None = None, reranker_factory: Callable | None = None):
+    def __init__(self, store, embedding_factory: Callable | None = None, reranker_factory: Callable | None = None, *, index_store=None):
         self.store = store
         self.embedding_factory = embedding_factory
         self.reranker_factory = reranker_factory
+        self.index_store = index_store
 
     @account_for_book("历史检索")
     async def retrieve(self, novel_id: str, number: int, query: str, limit: int = 6, semantic: bool = False,
@@ -106,6 +114,18 @@ class HistoricalRetriever:
         if not query.strip():
             raise ValueError('检索查询不能为空')
         self.store.get_chapter(novel_id, number=number)
+        if self.index_store is not None and retrieval_mode == 'bm25' and not semantic:
+            context = self.index_store.lexical_context(novel_id, number, query)
+            if context is not None:
+                ranked, digest, indexed, total, chunks = context
+                warnings = []
+                if indexed < total:
+                    warnings.append(f'历史索引已覆盖 {indexed}/{total} 章，可在索引管理中继续构建。')
+                if not ranked:
+                    warnings.append('未召回匹配的正文片段，不能据此认定历史中不存在相关事实。')
+                return {'sources': self.select(ranked, limit), 'context_hash': digest, 'mode': 'bm25',
+                        'retrieval_usage': {}, 'indexed_chapters': indexed, 'indexed_chunks': chunks,
+                        'warnings': warnings, 'scope': '检索当前作品已索引的前序正文'}
         rows = bounded_history(self.store.history_rows(novel_id, number))
         chunks = [chunk for row in rows for chunk in split_chapter(row)]
         self.store.update_history_index(rows, chunks)
@@ -151,6 +171,17 @@ class HistoricalRetriever:
                 client = getattr(embedding, "_http_client", None)
                 if client is not None:
                     await client.aclose()
+        selected = self.select(ranked, limit)
+        if not rows:
+            warnings.append("当前章节之前没有可检索的正文")
+        elif not selected:
+            warnings.append("没有召回与查询匹配的历史片段，不能据此认定历史中不存在相关事实")
+        return {"sources": selected, "context_hash": history_digest(rows), "mode": mode, "retrieval_usage": metrics,
+                "indexed_chapters": len(rows), "indexed_chunks": len(chunks), "warnings": warnings,
+                "scope": "仅检索当前作品前序章节，最多最近100章、50万字符；混合检索在此范围内同时进行关键词与向量召回"}
+
+    @staticmethod
+    def select(ranked, limit):
         selected = []
         per_chapter = Counter()
         for chunk in ranked:
@@ -160,13 +191,7 @@ class HistoricalRetriever:
             per_chapter[chunk["chapter_id"]] += 1
             if len(selected) >= limit:
                 break
-        if not rows:
-            warnings.append("当前章节之前没有可检索的正文")
-        elif not selected:
-            warnings.append("没有召回与查询匹配的历史片段，不能据此认定历史中不存在相关事实")
-        return {"sources": selected, "context_hash": history_digest(rows), "mode": mode, "retrieval_usage": metrics,
-                "indexed_chapters": len(rows), "indexed_chunks": len(chunks), "warnings": warnings,
-                "scope": "仅检索当前作品前序章节，最多最近100章、50万字符；混合检索在此范围内同时进行关键词与向量召回"}
+        return selected
 
     async def _hybrid(self, chunks, query, mode, progress, cancelled):
         if self.embedding_factory is None:
