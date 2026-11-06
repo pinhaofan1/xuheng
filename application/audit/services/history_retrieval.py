@@ -1,18 +1,14 @@
-"""Bounded historical prose retrieval with exact source anchors.
-
-Chinese character bigram BM25 requires no external segmentation model. Optional
-embedding reranking augments lexical candidates; it is labeled as reranking,
-not full-corpus vector search. All candidates come from earlier chapters of the
-same work. Source text remains unmodified so offsets are reproducible.
-"""
+"""Historical retrieval with book-scoped indexes and exact source anchors."""
 from __future__ import annotations
 
 from collections import Counter
+import asyncio
 import json
 import math
 import re
 from typing import Callable
 
+from application.ai.usage_accounting import account_for_book
 from application.audit.evidence_models import text_hash
 from application.audit.services.evidence_review_service import ReviewUnavailable
 
@@ -96,9 +92,6 @@ def bm25(chunks: list[dict], query: str) -> list[dict]:
     return sorted(ranked, key=lambda c: (-c["score"], -c["chapter_number"], c["start"]))
 
 
-from application.ai.usage_accounting import account_for_book
-
-
 class HistoricalRetriever:
     def __init__(self, store, embedding_factory: Callable | None = None, reranker_factory: Callable | None = None, *, index_store=None):
         self.store = store
@@ -114,7 +107,9 @@ class HistoricalRetriever:
         if not query.strip():
             raise ValueError('检索查询不能为空')
         self.store.get_chapter(novel_id, number=number)
-        if self.index_store is not None and retrieval_mode == 'bm25' and not semantic:
+        if self.index_store is not None and (retrieval_mode != 'bm25' or semantic):
+            return await self._indexed_hybrid(novel_id, number, query, limit, retrieval_mode, progress, cancelled)
+        if self.index_store is not None:
             context = self.index_store.lexical_context(novel_id, number, query)
             if context is not None:
                 ranked, digest, indexed, total, chunks = context
@@ -123,14 +118,15 @@ class HistoricalRetriever:
                     warnings.append(f'历史索引已覆盖 {indexed}/{total} 章，可在索引管理中继续构建。')
                 if not ranked:
                     warnings.append('未召回匹配的正文片段，不能据此认定历史中不存在相关事实。')
-                return {'sources': self.select(ranked, limit), 'context_hash': digest, 'mode': 'bm25',
+                return {'sources': self.select(ranked, min(limit, 6)), 'context_hash': digest, 'mode': 'bm25',
                         'retrieval_usage': {}, 'indexed_chapters': indexed, 'indexed_chunks': chunks,
                         'warnings': warnings, 'scope': '检索当前作品已索引的前序正文'}
         rows = bounded_history(self.store.history_rows(novel_id, number))
         chunks = [chunk for row in rows for chunk in split_chapter(row)]
-        self.store.update_history_index(rows, chunks)
+        if self.index_store is None:
+            self.store.update_history_index(rows, chunks)
         ranked = bm25(chunks, query[:8000])[:24]
-        warnings = []
+        warnings = ['尚未构建全书索引，当前使用最近章节的关键词检索。'] if self.index_store is not None else []
         mode = "bm25"
         metrics = {}
         if retrieval_mode != 'bm25' and chunks:
@@ -179,6 +175,77 @@ class HistoricalRetriever:
         return {"sources": selected, "context_hash": history_digest(rows), "mode": mode, "retrieval_usage": metrics,
                 "indexed_chapters": len(rows), "indexed_chunks": len(chunks), "warnings": warnings,
                 "scope": "仅检索当前作品前序章节，最多最近100章、50万字符；混合检索在此范围内同时进行关键词与向量召回"}
+
+    async def _indexed_hybrid(self, novel_id, number, query, limit, mode, progress, cancelled):
+        from infrastructure.persistence.database.search_vector_store import SearchVectorStore, unit_vector
+
+        if self.embedding_factory is None:
+            raise ReviewUnavailable('混合检索需要先配置 Embedding 模型')
+        embedding, fingerprint = self.embedding_factory()
+        if embedding is None:
+            raise ReviewUnavailable('Embedding 模型不可用，请检查检索配置')
+        store = SearchVectorStore(self.index_store)
+        digest, indexed, total, rows = await asyncio.to_thread(store.history, novel_id, number, fingerprint)
+        if indexed != total or any(row['dimensions'] is None for row in rows):
+            raise ReviewUnavailable('当前模型的前序章节向量索引尚未覆盖，请在历史索引区构建或切换关键词模式')
+        metrics = {'chunks': len(rows), 'cached_vectors': len(rows), 'embedded_texts': 0}
+        ranked = []
+        if rows and not cancelled():
+            progress('向量化检索查询')
+            try:
+                vectors = await embedding.embed_batch([query[:8000]])
+                vector = unit_vector(vectors[0])
+                if len(vectors) != 1 or any(row['dimensions'] != len(vector) for row in rows):
+                    raise ReviewUnavailable('查询向量维度与历史索引不一致，请检查模型配置')
+                ranked = await asyncio.to_thread(self._rank_indexed, novel_id, number, query, rows, vector)
+                metrics['embedded_texts'] = 1
+                if hasattr(embedding, 'metrics'):
+                    metrics.update(embedding.metrics())
+            finally:
+                transport = getattr(embedding, '_http_client', None)
+                if transport is not None:
+                    await transport.aclose()
+        if mode == 'hybrid_rerank' and ranked and not cancelled():
+            ranked = await self._rerank(ranked, query, progress, metrics)
+        if await asyncio.to_thread(self.index_store.context_digest, novel_id, number) != digest:
+            raise ReviewUnavailable('检索期间历史正文发生变化，请重新检索')
+        return {'sources': self.select(ranked, min(limit, 6)) if not cancelled() else [],
+                'context_hash': digest, 'mode': 'bm25+vector+reranker' if mode == 'hybrid_rerank' else 'bm25+vector',
+                'retrieval_usage': metrics, 'indexed_chapters': indexed, 'indexed_chunks': len(rows),
+                'warnings': [] if ranked else ['未召回历史正文片段。'],
+                'scope': '检索当前作品使用当前模型已索引的前序正文'}
+
+    def _rank_indexed(self, novel_id, number, query, rows, vector):
+        lexical = self.index_store.lexical(novel_id, number, query)
+        semantic = []
+        for row in rows:
+            chunk = dict(row)
+            embedding = json.loads(chunk.pop('vector_json'))
+            chunk.pop('dimensions')
+            chunk['vector_score'] = sum(a*b for a, b in zip(vector, embedding))
+            semantic.append(chunk)
+        semantic.sort(key=lambda chunk: (-chunk['vector_score'], -chunk['chapter_number'], chunk['start']))
+        return self._fuse(lexical, semantic)
+
+    @staticmethod
+    def _fuse(lexical, semantic):
+        fusion = {}
+        for channel, items in [('bm25', lexical[:24]), ('vector', semantic[:24])]:
+            for rank, chunk in enumerate(items, 1):
+                merged = fusion.setdefault(chunk['id'], {**chunk, 'score': 0.0, 'channels': []})
+                merged['score'] += 1/(60+rank)
+                merged['channels'].append(channel)
+        return sorted(fusion.values(), key=lambda item: (-item['score'], -item['chapter_number'], item['start']))[:24]
+
+    async def _rerank(self, ranked, query, progress, metrics):
+        if self.reranker_factory is None:
+            raise ReviewUnavailable('未配置 Reranker，请打开检索配置或选择不带重排的混合模式')
+        reranker = self.reranker_factory()
+        progress(f'重排 {len(ranked)} 个历史候选片段')
+        results = await reranker.rerank(query[:8000], [chunk['text'] for chunk in ranked], len(ranked))
+        if hasattr(reranker, 'metrics'):
+            metrics['rerank'] = reranker.metrics()['rerank']
+        return [{**ranked[item['index']], 'rerank_score': item['relevance_score']} for item in results]
 
     @staticmethod
     def select(ranked, limit):
@@ -231,14 +298,7 @@ class HistoricalRetriever:
                 score = sum(x*y for x,y in zip(query_vector,vector))/norm
                 semantic.append({**chunk, 'vector_score': score})
             semantic.sort(key=lambda item: (-item['vector_score'], -item['chapter_number'], item['start']))
-            lexical = bm25(chunks, query[:8000])[:24]
-            fusion = {}
-            for channel, items in [('bm25', lexical), ('vector', semantic[:24])]:
-                for rank, chunk in enumerate(items, 1):
-                    merged = fusion.setdefault(chunk['id'], {**chunk, 'score': 0.0, 'channels': []})
-                    merged['score'] += 1/(60+rank)
-                    merged['channels'].append(channel)
-            ranked = sorted(fusion.values(), key=lambda item: (-item['score'], -item['chapter_number'], item['start']))[:48]
+            ranked = self._fuse(bm25(chunks, query[:8000]), semantic)
             if hasattr(embedding, 'metrics'):
                 metrics.update(embedding.metrics())
         except ReviewUnavailable:
@@ -250,12 +310,5 @@ class HistoricalRetriever:
             if transport is not None:
                 await transport.aclose()
         if mode == 'hybrid_rerank' and ranked and not cancelled():
-            if self.reranker_factory is None:
-                raise ReviewUnavailable('未配置 Reranker，请打开检索配置或选择不带重排的混合模式')
-            reranker = self.reranker_factory()
-            progress(f'重排 {len(ranked)} 个历史候选片段')
-            results = await reranker.rerank(query[:8000], [chunk['text'] for chunk in ranked], len(ranked))
-            ranked = [{**ranked[item['index']], 'rerank_score': item['relevance_score']} for item in results]
-            if hasattr(reranker, 'metrics'):
-                metrics['rerank'] = reranker.metrics()['rerank']
+            ranked = await self._rerank(ranked, query, progress, metrics)
         return ranked, metrics

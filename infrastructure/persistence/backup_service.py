@@ -356,6 +356,10 @@ def quarantine(path, role):
                 for table in ('xh_search_postings','xh_search_chunks','xh_search_documents'):
                     conn.execute(f'DELETE FROM {table}')
                 conn.execute("UPDATE xh_search_jobs SET status='cancelled',error='从备份恢复，请重建索引'")
+            if 'xh_search_vector_jobs' in tables:
+                conn.execute('DELETE FROM xh_search_vectors')
+                conn.execute("""UPDATE xh_search_vector_jobs SET id=lower(hex(randomblob(16))),status='cancelled',
+                    error='从备份恢复，请核对服务用量并重新构建向量索引'""")
             if 'xh_aftermath_tasks' in tables:
                 conn.execute("UPDATE xh_aftermath_tasks SET status='failed',owner=NULL,heartbeat=0,error=? WHERE status IN ('queued','running')",
                              ('从备份恢复：请核对已保存结果与模型账单后手动继续',))

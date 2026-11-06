@@ -1,4 +1,5 @@
 import asyncio
+from contextvars import ContextVar
 
 from application.core.config.config_loader import reload_config
 from application.core import async_bridge
@@ -32,10 +33,16 @@ def test_run_coroutine_sync_runs_directly_without_active_loop():
 
 
 def test_run_coroutine_sync_bridges_from_active_loop():
-    async def caller():
-        return async_bridge.run_coroutine_sync(lambda: _return_value("bridged"))
+    scope = ContextVar("test_scope")
 
-    assert asyncio.run(caller()) == "bridged"
+    async def read_scope():
+        return scope.get()
+
+    async def caller():
+        scope.set("book-scope")
+        return async_bridge.run_coroutine_sync(read_scope)
+
+    assert asyncio.run(caller()) == "book-scope"
 
 
 def test_shutdown_async_bridge_does_not_create_executor():

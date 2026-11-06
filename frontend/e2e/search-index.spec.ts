@@ -22,6 +22,8 @@ test('workbench builds a local index and retrieves an exact preceding citation',
     await page.getByRole('tab', { name: '历史检索', exact: true }).click({ timeout: 8000 })
     await page.getByRole('button', { name: '构建索引' }).click({ timeout: 8000 })
     await expect(page.getByText('2/2 章 · 已完成')).toBeVisible()
+    await expect(page.getByRole('button', { name: '构建向量索引', exact: true })).toBeVisible()
+    await expect(page.getByText(/构建时会向已配置的嵌入服务发送正文片段/)).toBeVisible()
     await page.getByRole('textbox', { name: '历史检索内容' }).fill('紫铜灯芯', { timeout: 8000 })
     await page.getByRole('button', { name: '检索历史正文' }).click({ timeout: 8000 })
     await expect(page.locator('.history-pane blockquote')).toContainText('林澈发现了失落的紫铜灯芯。')

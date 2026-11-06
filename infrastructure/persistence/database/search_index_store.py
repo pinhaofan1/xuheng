@@ -12,6 +12,7 @@ from application.audit.services.history_retrieval import INDEX_VERSION, split_ch
 
 class SearchIndexStore:
     def __init__(self, db):
+        self.db = db
         self.path = db.db_path
 
     @contextmanager
@@ -72,7 +73,11 @@ class SearchIndexStore:
         if chapter is None:
             with self.connection(write=True) as conn:
                 if self.pending_chapter(conn, job['novel_id']) is None:
-                    conn.execute("UPDATE xh_search_jobs SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='queued'", (job['id'],))
+                    finished = conn.execute("UPDATE xh_search_jobs SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='queued'", (job['id'],))
+                    if finished.rowcount:
+                        conn.execute("""DELETE FROM xh_search_vectors WHERE novel_id=? AND text NOT IN (
+                            SELECT c.text FROM xh_search_chunks c JOIN xh_search_documents d ON d.chapter_id=c.chapter_id
+                            WHERE d.novel_id=? AND d.index_version=?)""", (job['novel_id'], job['novel_id'], INDEX_VERSION))
             return True
         try:
             row = dict(chapter)
@@ -147,8 +152,34 @@ class SearchIndexStore:
                 chunk_id, tf = hit['id'], hit['frequency']
                 scores[chunk_id] += idf[hit['term']]*tf*2.2/(tf+1.2*(.25+.75*hit['term_count']/(average or 1)))
                 positions[chunk_id] = (-hit['number'], hit['start'])
+            cues = self.summary_cues(conn, novel_id, before, set(query_terms)) if scores else []
+            for key in scores:
+                number = -positions[key][0]
+                boost = sum(weight for first, last, weight in cues if first <= number <= last)
+                scores[key] *= 1+min(boost, .35)
             ranked = sorted(scores, key=lambda key: (-scores[key], positions[key], key))[:limit]
             return [dict(conn.execute('''SELECT c.id,c.chapter_id,c.start,c.end,c.text,d.novel_id,
                          d.number AS chapter_number,d.content_hash FROM xh_search_chunks c
                          JOIN xh_search_documents d ON d.chapter_id=c.chapter_id WHERE c.id=?''', (key,)).fetchone(),
                          score=round(scores[key],6)) for key in ranked]
+
+    @staticmethod
+    def summary_cues(conn, novel_id, before, query_terms):
+        # Summaries can promote matching prose but are never returned as source
+        # text. A completed act must end strictly before the target chapter.
+        summaries = conn.execute('''SELECT s.chapter_number,s.chapter_number,substr(s.summary,1,4000)
+            FROM chapter_summaries s JOIN knowledge k ON k.id=s.knowledge_id
+            WHERE k.novel_id=? AND s.chapter_number<? AND s.summary IS NOT NULL
+            UNION ALL
+            SELECT chapter_start,chapter_end,
+                   CASE WHEN json_valid(metadata) THEN substr(json_extract(metadata,'$.summary'),1,4000) END
+            FROM story_nodes WHERE novel_id=? AND node_type='act'
+                 AND chapter_start>0 AND chapter_start<=chapter_end AND chapter_end<?''',
+            (novel_id, before, novel_id, before))
+        cues = []
+        for first, last, summary in summaries:
+            if summary:
+                overlap = len(query_terms.intersection(terms(summary)))
+                if overlap:
+                    cues.append((first, last, .25*overlap/len(query_terms)))
+        return sorted(cues, key=lambda cue: (-cue[2], cue[0], cue[1]))[:12]

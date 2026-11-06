@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from application.ai.embedding_config_service import EmbeddingConfigService
 from application.audit.evidence_models import text_hash
+from application.audit.services.evidence_review_service import ReviewUnavailable
 from infrastructure.ai.retrieval_client import RetrievalHTTPClient, validate_base_url
 from infrastructure.persistence.database.evidence_review_store import EvidenceReviewStore
 
@@ -60,12 +61,16 @@ class RetrievalConfigService:
         return RetrievalHTTPClient(api_key=config.api_key, base_url=config.base_url,
             embedding_model=config.model, reranker_model=reranker, dimensions=dimensions)
 
-    def embedding_factory(self):
-        config, _, dimensions = self.raw()
+    def embedding_factory(self, *, cloud_only=False):
+        config, reranker, dimensions = self.raw()
         if config.mode == 'local':
+            if cloud_only:
+                raise ReviewUnavailable('请先在 AI 控制台配置云端嵌入模型')
             from interfaces.api.dependencies import get_embedding_service
             return get_embedding_service(), text_hash(f'local:{config.model_path}')
-        return self.client(), text_hash(f'http:{config.base_url}:{config.model}:{dimensions}:v1')
+        client = RetrievalHTTPClient(api_key=config.api_key, base_url=config.base_url,
+            embedding_model=config.model, reranker_model=reranker, dimensions=dimensions)
+        return client, text_hash(f'http:{client.base_url}:{config.model}:{dimensions}:v1')
 
     async def test(self):
         client = self.client()

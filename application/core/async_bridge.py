@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from contextvars import copy_context
 from dataclasses import dataclass
 from threading import Lock
 from typing import Awaitable, Callable, TypeVar
@@ -69,8 +70,9 @@ def run_coroutine_sync(
     except RuntimeError:
         return asyncio.run(_await_with_optional_timeout(coroutine_factory, timeout))
 
+    context = copy_context()
     future = _get_executor().submit(
-        lambda: asyncio.run(_await_with_optional_timeout(coroutine_factory, timeout))
+        context.run, lambda: asyncio.run(_await_with_optional_timeout(coroutine_factory, timeout))
     )
     try:
         return future.result(timeout=timeout)

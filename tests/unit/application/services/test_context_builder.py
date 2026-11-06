@@ -341,6 +341,11 @@ class TestContextBuilder:
                     "score": 0.85,
                     "payload": {"text": "Near chapter hit", "chapter_number": 10},
                 },
+                {
+                    "id": "c3",
+                    "score": 0.8,
+                    "payload": {"text": "Future chapter hit", "chapter_number": 12},
+                },
             ]
         )
 
@@ -357,6 +362,7 @@ class TestContextBuilder:
         layer3 = structured["layer3_text"]
         assert "Near chapter hit" in layer3
         assert "Same chapter hit" not in layer3
+        assert "Future chapter hit" not in layer3
 
     def test_layer1_has_character_anchors_when_vector_disabled(self):
         dto = _empty_bible_dto(

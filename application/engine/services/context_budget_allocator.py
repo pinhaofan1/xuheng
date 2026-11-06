@@ -1820,7 +1820,7 @@ class ContextBudgetAllocator:
         outline: str,
     ) -> str:
         """获取向量召回片段"""
-        if not self.vector_facade:
+        if not self.vector_facade or chapter_number <= 1 or not outline.strip():
             return ""
         
         try:
@@ -1850,10 +1850,11 @@ class ContextBudgetAllocator:
             if not results:
                 return ""
             
-            # 过滤：排除当前章节，优先相近章节
+            # 只允许已有前序正文进入上下文。
             filtered = [
                 hit for hit in results
-                if hit.get("payload", {}).get("chapter_number") != chapter_number
+                if isinstance(number := hit.get("payload", {}).get("chapter_number"), int)
+                and 0 < number < chapter_number
             ]
             
             if not filtered:

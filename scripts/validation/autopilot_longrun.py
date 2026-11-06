@@ -93,6 +93,7 @@ def ensure_story_inputs(port):
     ):
         if character['character_id'] not in existing:
             request(port, path+'/characters', 'POST', character)
+    request(port, '/api/v1/llm-control/prompts/variables/backfill', 'POST', {'novel_id': BOOK})
 
 
 def run(port,seconds, resume_setup=False):
