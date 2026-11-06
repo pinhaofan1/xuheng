@@ -11,11 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from application.audit.evidence_models import AIReviewRequest, FeedbackRequest, HistorySearchRequest, RuleSet, RunReviewRequest, text_hash
+from application.audit.fact_models import FactDecision
 from application.audit.services.evidence_review_service import (
     EvidenceReviewService, ReviewConflict, ReviewNotFound, ReviewUnavailable,
 )
 from infrastructure.persistence.database.connection import get_database
 from infrastructure.persistence.database.evidence_review_store import EvidenceReviewStore
+from infrastructure.persistence.database.fact_store import FactStore
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/evidence-reviews", tags=["evidence-reviews"])
@@ -55,6 +57,29 @@ def save_rules(novel_id: str, request: RuleSet, service: EvidenceReviewService =
 def import_character_preview(novel_id: str, service: EvidenceReviewService = Depends(get_evidence_review_service)):
     from application.audit.services.character_import import preview_character_rules
     return _call(lambda: preview_character_rules(service.store, novel_id))
+
+
+@router.get('/{novel_id}/facts')
+def list_facts(novel_id: str, status: Literal['pending', 'accept', 'coexist', 'reject'] | None = None,
+               offset: int = Query(0, ge=0), service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    return _call(lambda: FactStore(service.store.db).list_facts(novel_id, status=status, offset=offset))
+
+
+@router.get('/{novel_id}/facts/{fact_id}/history')
+def fact_history(novel_id: str, fact_id: str, service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    return _call(lambda: FactStore(service.store.db).history(novel_id, fact_id))
+
+
+@router.get('/{novel_id}/facts/{fact_id}/comparison')
+def compare_fact(novel_id: str, fact_id: str, profile_id: str = Query(min_length=1, max_length=80),
+                 service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    return _call(lambda: FactStore(service.store.db).compare(novel_id, fact_id, profile_id))
+
+
+@router.post('/{novel_id}/facts/{fact_id}/decisions')
+def decide_fact(novel_id: str, fact_id: str, request: FactDecision,
+                service: EvidenceReviewService = Depends(get_evidence_review_service)):
+    return _call(lambda: FactStore(service.store.db).decide(novel_id, fact_id, request))
 
 
 @router.post("/{novel_id}/chapters/{number}")

@@ -497,7 +497,8 @@ async def test_real_pipeline_reuses_model_bundle_and_completes_local_auxiliary_r
     from domain.novel.value_objects.tension_dimensions import TensionDimensions
     service, provider = model
     provider.generate.return_value = GenerationResult(json.dumps({'summary':'chapter summary', 'relation_triples': [
-        {'subject':'林澈','predicate':'持有','object':'铜铃'}], 'foreshadow_hints':[{'description':'铜铃将在雨夜响起'}]}), TokenUsage(20, 10))
+        {'subject':'林澈','predicate':'持有','object':'铜铃'}], 'foreshadow_hints':[{'description':'铜铃将在雨夜响起'}],
+        'character_facts': [{'character_name':'林澈','assertion':'保存的正文事实','quote':'saved text'}]}), TokenUsage(20, 10))
     monkeypatch.setattr('infrastructure.ai.prompt_utils.render_required_prompt', lambda *args: Prompt(system='s',user='bundle'))
     monkeypatch.setattr('application.analyst.services.tension_scoring_service.TensionScoringService.score_chapter', AsyncMock(return_value=TensionDimensions(50,50,50,50)))
     monkeypatch.setattr('application.engine.services.guardrail_execution.run_guardrail_advise_sync', lambda *args: {'passed':True,'overall_score':80,'violations':[]})
@@ -522,3 +523,6 @@ async def test_real_pipeline_reuses_model_bundle_and_completes_local_auxiliary_r
     await pipeline.run_after_chapter_saved('book', 1, 'saved text')
     assert provider.generate.await_count == 1
     assert db.fetch_one("SELECT count(*) AS n FROM novel_checkpoints WHERE novel_id='book'")['n'] == before
+    from infrastructure.persistence.database.fact_store import FactStore
+    facts = FactStore(db).list_facts('book')['facts']
+    assert len(facts) == 1 and facts[0]['status'] == 'pending' and facts[0]['source_valid']

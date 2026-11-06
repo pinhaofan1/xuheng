@@ -6,7 +6,7 @@ from time import perf_counter
 from typing import Protocol
 from uuid import uuid4
 
-from application.audit.evidence_models import AI_ENGINE_VERSION, ENGINE_VERSION, RuleSet, text_hash
+from application.audit.evidence_models import AI_ENGINE_VERSION, ENGINE_VERSION, ReviewContext, RuleSet, text_hash
 from domain.novel.services.action_attribution import ACTION_LABELS, attribute_actions
 
 
@@ -67,6 +67,11 @@ def review_text(content: str, rules: RuleSet) -> tuple[list[dict], list[dict]]:
     return issues, uncertain
 
 
+def review_context(store, novel_id: str, number: int) -> ReviewContext:
+    resolver = getattr(store, 'review_context', None)
+    return resolver(novel_id, number) if resolver else ReviewContext(store.get_rules(novel_id))
+
+
 class EvidenceReviewService:
     def __init__(self, store: ReviewStore):
         self.store = store
@@ -89,13 +94,14 @@ class EvidenceReviewService:
             raise ValueError("请先保存章节正文")
         if len(content) > 100_000:
             raise ValueError("单次审校最多支持 100000 个字符，请拆分章节")
-        rules = self.get_rules(novel_id)
+        context = review_context(self.store, novel_id, number)
+        rules = context.rules
         if not rules.profiles or not any(p.allowed_magic or p.forbidden_actions for p in rules.profiles):
             raise ValueError("请先为人物设置至少一项明确限制")
-        content_hash, rules_hash = text_hash(content), rules.content_hash()
+        content_hash, rules_hash = text_hash(content), context.content_hash()
         cached = self.store.find_run(novel_id, chapter["id"], content_hash, rules_hash)
         if cached:
-            return self._decorate(cached, chapter, rules)
+            return self._decorate(cached, chapter, context)
         issues, uncertain = review_text(content, rules)
         run = {
             "id": uuid4().hex, "novel_id": novel_id, "chapter_id": chapter["id"],
@@ -103,7 +109,7 @@ class EvidenceReviewService:
             "content_snapshot": content, "rules_hash": rules_hash, "engine_version": ENGINE_VERSION,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "elapsed_ms": round((perf_counter() - started) * 1000, 3),
-            "issues": issues, "uncertain": uncertain,
+            "issues": issues, "uncertain": uncertain, "sources": list(context.facts),
         }
         saved = self.store.save_run(run)
         return self.get_run(novel_id, saved["id"])
@@ -111,20 +117,20 @@ class EvidenceReviewService:
     def get_run(self, novel_id: str, run_id: str) -> dict:
         run = self.store.get_run(novel_id, run_id)
         chapter = self.store.get_chapter(novel_id, chapter_id=run["chapter_id"])
-        return self._decorate(run, chapter, self.get_rules(novel_id))
+        return self._decorate(run, chapter, review_context(self.store, novel_id, chapter['number']))
 
     def latest(self, novel_id: str, number: int, mode: str = "rules") -> dict | None:
         chapter = self.store.get_chapter(novel_id, number=number)
-        rules = self.get_rules(novel_id)
+        context = review_context(self.store, novel_id, number)
         if mode == "ai":
             run = self.store.latest_run(novel_id, chapter["id"], mode="ai")
-            return self._decorate(run, chapter, rules) if run else None
+            return self._decorate(run, chapter, context) if run else None
         # An author may restore an earlier input. Prefer its reusable result,
         # rather than showing a newer, now-stale run after the next page reload.
-        run = self.store.find_run(novel_id, chapter["id"], text_hash(chapter["content"] or ""), rules.content_hash())
+        run = self.store.find_run(novel_id, chapter["id"], text_hash(chapter["content"] or ""), context.content_hash())
         if run is None:
             run = self.store.latest_run(novel_id, chapter["id"])
-        return self._decorate(run, chapter, rules) if run else None
+        return self._decorate(run, chapter, context) if run else None
 
     def feedback(self, novel_id: str, run_id: str, issue_id: str, status: str, version: int) -> dict:
         run = self.get_run(novel_id, run_id)
@@ -135,11 +141,11 @@ class EvidenceReviewService:
         self.store.feedback(novel_id, run_id, issue_id, status, version)
         return self.get_run(novel_id, run_id)
 
-    def _decorate(self, run: dict, chapter: dict, rules: RuleSet) -> dict:
+    def _decorate(self, run: dict, chapter: dict, context: ReviewContext) -> dict:
         reasons = []
         if text_hash(chapter["content"] or "") != run["content_hash"]:
             reasons.append("正文已修改")
-        if rules.content_hash() != run["rules_hash"]:
+        if context.content_hash() != run["rules_hash"]:
             reasons.append("人物设定已修改")
         ai = run.get("mode") == "ai"
         if (ai and not run["engine_version"].startswith(AI_ENGINE_VERSION + ":")) or (not ai and run["engine_version"] != ENGINE_VERSION):

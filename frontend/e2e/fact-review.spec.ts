@@ -1,0 +1,21 @@
+import { expect, test } from '@playwright/test'
+
+test('an author can compare an anchored fact, keep it and undo the decision', async ({ page }) => {
+  await page.route('https://**', route => route.abort())
+  await page.goto('/book/ai-browser-fixture/review/2')
+  await page.getByRole('tab', { name: '人物事实', exact: true }).click()
+  await page.getByRole('button', { name: /沈澜 · 左臂骨折/ }).click()
+  const detail = page.getByRole('article', { name: '事实处理详情' })
+  await expect(detail.locator('blockquote')).toHaveText('沈澜的左臂已经断了')
+  await expect(detail.getByText('沈澜的已保存设定')).toBeVisible()
+  await detail.getByRole('button', { name: '保留并存' }).click()
+  await expect(detail.getByRole('button', { name: '撤销事实处理' })).toBeEnabled()
+  await expect(detail.getByText('适用第 2 章起')).toBeVisible()
+  await detail.getByRole('button', { name: '撤销事实处理' }).click()
+  await expect(detail.getByText('处理记录（2）')).toBeVisible()
+  await detail.getByText('处理记录（2）').click()
+  await expect(detail.getByText(/保留并存 → 待确认/)).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await page.screenshot({ path: '../.validation/fact-review-mobile.png' })
+})

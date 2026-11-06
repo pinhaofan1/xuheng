@@ -325,6 +325,12 @@ async def llm_chapter_extract_bundle(
         "foreshadow_context": foreshadow_context,
     }
     prompt = render_required_prompt(CHAPTER_NARRATIVE_SYNC, variables)
+    from dataclasses import replace
+    prompt = replace(prompt, system=prompt.system + (
+        '\n在同一个 JSON 对象增加 character_facts 数组，最多 5 条。每项含 character_name、'
+        'assertion（正文明确支持、后续可核对的一条人物事实）和 quote（正文中的连续原句，逐字复制，且只出现一次）。'
+        '只提取有明确原文依据的事实，猜测与归属不明的内容省略，没有时返回空数组。'
+    ))
     config = GenerationConfig(max_tokens=4096, temperature=0.45)
 
     result = await llm.generate(prompt, config)
@@ -358,6 +364,7 @@ async def llm_chapter_extract_bundle(
     states_raw = data.get("character_states") or []
     if not isinstance(states_raw, list):
         states_raw = []
+    facts_raw = data.get('character_facts')
 
     return {
         "summary": str(data.get("summary", "")).strip(),
@@ -375,6 +382,7 @@ async def llm_chapter_extract_bundle(
         "causal_edges": [{"data": c, "status": "pending"} for c in causal_raw[:3]],
         "character_mutations": [{"data": m, "status": "pending"} for m in mutations_raw[:3]],
         "character_states": states_raw[:5],
+        "character_facts": facts_raw[:5] if isinstance(facts_raw, list) else [],
         # V9: 新增提取元数据，记录提取时的元信息
         "_meta": {
             "extract_version": "v9",
@@ -2131,6 +2139,12 @@ def persist_bundle_extras(
             logger.warning("时间轴落库失败 novel=%s ch=%s: %s", novel_id, chapter_number, e)
 
 
+@durable_effect("fact_candidates")
+def persist_fact_candidates(db, novel_id, number, content, candidates):
+    from infrastructure.persistence.database.fact_store import FactStore
+    return FactStore(db).add_extracted(novel_id, number, content, candidates)
+
+
 async def sync_chapter_narrative_after_save(
     novel_id: str,
     chapter_number: int,
@@ -2233,6 +2247,10 @@ async def sync_chapter_narrative_after_save(
     if not isinstance(summary,str) or not summary.strip():
         logger.warning("章末摘要未成功提取，保留原知识数据且停止后续同步 novel=%s ch=%s",novel_id,chapter_number)
         return flags
+
+    candidates = bundle.get('character_facts')
+    if candidates and getattr(chapter_repository, 'db', None) is not None:
+        persist_fact_candidates(chapter_repository.db, novel_id, chapter_number, content, candidates)
 
     # --- 独立多维张力评分 ---
     from application.analyst.services.tension_scoring_service import TensionScoringService

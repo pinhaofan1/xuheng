@@ -1,6 +1,7 @@
 """Validated contracts for the Xuheng evidence review extension."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from hashlib import sha256
 import json
 from typing import Literal
@@ -109,6 +110,18 @@ class RuleSet(BaseModel):
 class RunReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_content: str | None = Field(default=None, max_length=100_000)
+
+
+@dataclass(frozen=True)
+class ReviewContext:
+    rules: RuleSet
+    facts: tuple[dict, ...] = ()
+
+    def content_hash(self) -> str:
+        rules_hash = self.rules.content_hash()
+        if not self.facts:
+            return rules_hash
+        return text_hash(json.dumps([rules_hash, self.facts], ensure_ascii=False, sort_keys=True))
 
 
 class FeedbackRequest(BaseModel):

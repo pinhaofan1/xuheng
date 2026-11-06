@@ -27,6 +27,7 @@ flowchart LR
 | `application/audit/services/evidence_review_service.py` | 离线检查、缓存、失效与反馈 |
 | `application/audit/services/history_retrieval.py` | 历史正文分块、BM25、可选重排与缓存 |
 | `application/audit/services/ai_evidence_review.py` | 提示编排、结构与引用验证、运行落盘 |
+| `infrastructure/persistence/database/fact_store.py` | 章后事实候选、原文锚点、版本校验、幂等决策与处理记录 |
 | `application/audit/services/review_jobs.py` | 有界线程任务、活动去重、进度与取消 |
 | `infrastructure/ai/evidence_model_client.py` | 兼容 Chat Completions、输出预算、用量与错误脱敏 |
 | `infrastructure/persistence/database/evidence_review_store.py` | 关系数据、快照、索引、反馈、写入确认 |

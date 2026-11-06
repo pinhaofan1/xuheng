@@ -63,8 +63,33 @@ export interface RetrievalConfig { configured: boolean; base_url: string; embedd
 export interface ReviewJob { id: string; novel_id: string; number: number; status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; stage: string; run_id: string | null; error: string; cancel_requested: boolean; created_at: string; updated_at: string; retry_of?: string | null }
 export interface ModelStatus { configured: boolean; model: string; message: string }
 export interface RunHistoryItem { id: string; mode: string; model_name: string; created_at: string; elapsed_ms: number; input_tokens: number | null; output_tokens: number | null }
+export type FactStatus = 'pending' | 'accept' | 'coexist' | 'reject'
+export type FactAction = Exclude<FactStatus, 'pending'> | 'undo'
+export interface FactState {
+  status: FactStatus; version: number; profile_id: string | null; replaces: string | null
+  applies_from: number | null; applies_through: number | null
+}
+export interface FactCandidate extends FactState {
+  id: string; subject_name: string; assertion: string; source_number: number; source_quote: string; source_valid: boolean
+  source_start: number; source_end: number
+}
+export interface FactPage { facts: FactCandidate[]; has_more: boolean; rules_revision: string }
+export interface FactComparison { profile_name: string; settings: string[]; related: FactCandidate[] }
+export interface FactEvent { action: FactAction; before: FactState; after: FactState; created_at: string }
+export interface FactDecision {
+  request_id: string; expected_version: number; rules_revision: string; action: FactAction
+  profile_id?: string | null; replaces?: string | null; applies_from?: number | null; applies_through?: number | null
+}
 const root = (novel: string) => `/evidence-reviews/${encodeURIComponent(novel)}`
 export const evidenceReviewApi = {
+  facts: (novel: string, status: FactStatus | null, offset: number) =>
+    apiClient.get<FactPage>(`${root(novel)}/facts`, { params: { status, offset } }) as Promise<FactPage>,
+  factComparison: (novel: string, fact: string, profileId: string) =>
+    apiClient.get<FactComparison>(`${root(novel)}/facts/${fact}/comparison`, { params: { profile_id: profileId } }) as Promise<FactComparison>,
+  factHistory: (novel: string, fact: string) =>
+    apiClient.get<FactEvent[]>(`${root(novel)}/facts/${fact}/history`) as Promise<FactEvent[]>,
+  decideFact: (novel: string, fact: string, body: FactDecision) =>
+    apiClient.post<FactState>(`${root(novel)}/facts/${fact}/decisions`, body) as Promise<FactState>,
   rules: (novel: string) => apiClient.get<RuleSet>(`${root(novel)}/rules`) as Promise<RuleSet>,
   saveRules: (novel: string, rules: RuleSet) => apiClient.put<RuleSet>(`${root(novel)}/rules`, rules) as Promise<RuleSet>,
   importCharacters: (novel: string) => apiClient.get<{profiles:CharacterRule[];warnings:string[];source:string}>(`${root(novel)}/rules/import-preview`) as Promise<{profiles:CharacterRule[];warnings:string[];source:string}>,

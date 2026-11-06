@@ -225,10 +225,13 @@
       "group": "next",
       "priority": "P1",
       "title": "人物事实同步与冲突处理",
-      "status": "todo",
+      "status": "done",
       "kind": "feature",
       "acceptance": "设定、正文提取与审校事实之间有明确同步策略；冲突展示来源，由作者确认，支持回退。",
-      "evidence": []
+      "evidence": [
+        "project_docs/GOAL_PROGRESS.md"
+      ],
+      "completed_at": "2026-11-07"
     },
     {
       "id": "F07",

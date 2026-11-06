@@ -4,6 +4,7 @@ import logging
 import openai
 import httpx
 from typing import Any, AsyncIterator
+from urllib.parse import urlsplit
 
 from openai import AsyncOpenAI
 
@@ -335,7 +336,11 @@ class OpenAIProvider(BaseProvider):
             fmt = config.response_format
             base_url = (self.settings.base_url or "").rstrip("/")
 
-            if fmt.get("type") == "json_schema" and base_url in self.__class__._json_schema_unsupported_cache:
+            accepts_json_object_only = (
+                urlsplit(base_url).hostname == "api.deepseek.com"
+                or base_url in self.__class__._json_schema_unsupported_cache
+            )
+            if fmt.get("type") == "json_schema" and accepts_json_object_only:
                 # 已知不支持 json_schema，自动降级到 json_object
                 logger.debug("json_schema 已知不支持，降级到 json_object: %s", base_url)
                 kwargs["response_format"] = {"type": "json_object"}

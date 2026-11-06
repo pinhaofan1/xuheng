@@ -58,6 +58,25 @@ class TestOpenAIProviderLegacy:
         assert timeout.pool == 2
 
     @pytest.mark.anyio
+    async def test_deepseek_sends_supported_json_format_on_the_first_budgeted_request(self):
+        from application.ai.usage_accounting import single_provider_request
+
+        provider = OpenAIProvider(Settings(api_key="fixture", base_url="https://api.deepseek.com/v1",
+                                           use_legacy_chat_completions=True))
+        prompt = Prompt(system="Return JSON", user="Score this chapter")
+        config = GenerationConfig(model="deepseek-flash", response_format={"type": "json_schema", "json_schema": {}})
+        result = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='{"score": 50}'))],
+                                 usage=SimpleNamespace(prompt_tokens=4, completion_tokens=5))
+        try:
+            with patch.object(provider.async_client.chat.completions, "create", AsyncMock(return_value=result)) as create:
+                with single_provider_request():
+                    await provider.generate(prompt, config)
+                assert create.await_count == 1
+                assert create.call_args.kwargs["response_format"] == {"type": "json_object"}
+        finally:
+            await provider._http_client.aclose()
+
+    @pytest.mark.anyio
     async def test_generate_requires_model_id(self, provider):
         prompt = Prompt(system="s", user="u")
         config = GenerationConfig(model="", max_tokens=32, temperature=0.5)

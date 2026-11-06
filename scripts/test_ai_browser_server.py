@@ -99,6 +99,10 @@ def main():
                 tx.execute("INSERT INTO chapters(id,novel_id,number,title,content) VALUES (?,'ai-browser-fixture',?,'断臂与潮声',?)", (f"fixture-{number}", number, content))
         store = EvidenceReviewStore(db)
         store.save_rules("ai-browser-fixture", RuleSet(profiles=[CharacterRule(id="shen", name="沈澜", allowed_magic=["水系"])]))
+    from application.world.services.chapter_narrative_sync import persist_fact_candidates
+    persist_fact_candidates(db, 'ai-browser-fixture', 1, '🌊沈澜的左臂已经断了，无法抬起。', [
+        {'character_name': '沈澜', 'assertion': '左臂骨折', 'quote': '沈澜的左臂已经断了'},
+    ])
     # Seed an interrupted request to verify restart recovery in the real UI.
     from infrastructure.persistence.operation_journal import get_operation_journal, now
     from application.audit.evidence_models import text_hash

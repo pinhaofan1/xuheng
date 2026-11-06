@@ -10,6 +10,7 @@ import WorkspaceNav from '@/components/layout/WorkspaceNav.vue'
 import AppIcon from '@/components/layout/AppIcon.vue'
 import RetrievalSettings from '@/components/global/RetrievalSettings.vue'
 import SearchIndexControls from '@/components/SearchIndexControls.vue'
+import FactReviewPanel from '@/components/FactReviewPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,7 +45,7 @@ const retrieving = ref(false)
 const runHistory = ref<RunHistoryItem[]>([])
 const panel = ref('results')
 const settingsOpen = ref(false)
-const panels = [{ value: 'results', label: '审校结果' }, { value: 'history', label: '历史检索' }, { value: 'runs', label: '运行历史' }]
+const panels = [{ value: 'results', label: '审校结果' }, { value: 'history', label: '历史检索' }, { value: 'facts', label: '人物事实' }, { value: 'runs', label: '运行历史' }]
 const mode = computed(() => route.query.mode === 'ai' ? 'ai' : 'rules')
 const jobActive = computed(() => job.value?.status === 'queued' || job.value?.status === 'running')
 
@@ -367,6 +368,9 @@ onBeforeRouteUpdate((to, from) => to.params.id !== from.params.id || to.params.s
               <article v-for="source in retrieval.sources" :key="source.id" class="source-card"><p class="eyebrow">第 {{ source.chapter_number }} 章 · 原文片段</p><blockquote>{{ source.text }}</blockquote><router-link :to="`/book/${novel}/chapter/${source.chapter_number}`" target="_blank">查看来源章节 ↗</router-link></article>
               <p class="muted">{{ retrieval.scope }}</p>
             </template>
+          </div>
+          <div v-else-if="panel === 'facts'" id="review-panel-facts" role="tabpanel" aria-labelledby="review-tab-facts">
+            <FactReviewPanel :novel="novel" :disabled="disabled || rulesDirty" @changed="refresh" />
           </div>
           <div v-else-if="panel === 'runs'" id="review-panel-runs" role="tabpanel" aria-labelledby="review-tab-runs" class="history-pane">
             <n-empty v-if="!runHistory.length" description="尚无运行记录" />

@@ -10,8 +10,9 @@ import json
 from time import monotonic, sleep
 from uuid import uuid4
 
-from application.audit.evidence_models import ENGINE_VERSION, CharacterRule, RuleSet
+from application.audit.evidence_models import ENGINE_VERSION, CharacterRule, ReviewContext, RuleSet
 from application.audit.services.evidence_review_service import ReviewConflict, ReviewNotFound, ReviewUnavailable
+from infrastructure.persistence.database.fact_store import FactStore
 
 
 class EvidenceReviewStore:
@@ -34,12 +35,17 @@ class EvidenceReviewStore:
         return row
 
     def get_rules(self, novel_id: str) -> RuleSet:
-        rows = self.db.fetch_all(
+        with FactStore(self.db).transaction() as conn:
+            return self._read_rules(conn, novel_id)
+
+    @staticmethod
+    def _read_rules(conn, novel_id: str) -> RuleSet:
+        rows = conn.execute(
             """SELECT s.revision, p.id, p.name, t.category, t.value
                FROM xh_rule_sets s LEFT JOIN xh_rule_profiles p ON p.novel_id = s.novel_id
                LEFT JOIN xh_rule_terms t ON t.novel_id = p.novel_id AND t.profile_id = p.id
                WHERE s.novel_id = ? ORDER BY p.id, t.category, t.value""", (novel_id,),
-        )
+        ).fetchall()
         if not rows:
             return RuleSet()
         profiles: dict[str, dict] = {}
@@ -53,10 +59,31 @@ class EvidenceReviewStore:
             })
             if row["category"]:
                 profile[row["category"]].append(row["value"])
-        for row in self.db.fetch_all('SELECT profile_id,text FROM xh_rule_facts WHERE novel_id=? ORDER BY profile_id,position', (novel_id,)):
+        for row in conn.execute('SELECT profile_id,text FROM xh_rule_facts WHERE novel_id=? ORDER BY profile_id,position', (novel_id,)):
             if row['profile_id'] in profiles:
                 profiles[row['profile_id']]['facts'].append(row['text'])
         return RuleSet(revision=rows[0]["revision"], profiles=[CharacterRule(**x) for x in profiles.values()])
+
+    def review_context(self, novel_id: str, number: int) -> ReviewContext:
+        facts = FactStore(self.db)
+        with facts.transaction() as conn:
+            rules = self._read_rules(conn, novel_id)
+            rows = facts.applicable(conn, novel_id, number)
+        profiles = {profile.id: profile for profile in rules.profiles}
+        sources = []
+        for row in rows:
+            profile = profiles.get(row['profile_id'])
+            if profile is None:
+                continue
+            if row['replaces'] is not None:
+                if row['replaces'] not in profile.facts:
+                    continue
+                profile.facts.remove(row['replaces'])
+            sources.append({'id': 'F:'+row['id'], 'profile_id': profile.id, 'assertion': row['assertion'],
+                'chapter_id': row['source_chapter_id'], 'chapter_number': row['source_number'],
+                'start': row['source_start'], 'end': row['source_end'], 'text': row['source_quote'],
+                'content_hash': row['source_hash']})
+        return ReviewContext(rules, tuple(sources))
 
     def save_rules(self, novel_id: str, rules: RuleSet) -> RuleSet:
         current = self.get_rules(novel_id)
