@@ -19,21 +19,21 @@ const naiveTheme = computed(() =>
 
 // ─── 静态调色板（不随主题变化，提升出来避免 computed 重建字符串）─────────────
 const LIGHT_PALETTE = {
-  primary:        '#4564cf',
-  primaryHover:   '#5574dd',
-  primaryPressed: '#3653b8',
-  primarySuppl:   '#8298e5',
-  text1:          '#263246',
-  text2:          '#4e5b70',
-  text3:          '#718096',
-  border:         'rgba(15, 23, 42, 0.09)',
-  divider:        'rgba(15, 23, 42, 0.06)',
-  surface:        '#ffffff',
-  tableStriped:   '#f8fafc',
-  tableHover:     '#f8fafc',
-  inputBg:        '#ffffff',
-  drawerBg:       '#eef1f6',
-  selectBorder:   '#4564cf',
+  primary:        '#285c51',
+  primaryHover:   '#356e61',
+  primaryPressed: '#20483f',
+  primarySuppl:   '#4d7c6d',
+  text1:          '#222d28',
+  text2:          '#4b564e',
+  text3:          '#626d63',
+  border:         '#dfdfd4',
+  divider:        '#e8e8de',
+  surface:        '#fffefa',
+  tableStriped:   '#f7f6f0',
+  tableHover:     '#f7f6f0',
+  inputBg:        '#fffefa',
+  drawerBg:       '#f4f2eb',
+  selectBorder:   '#285c51',
 } as const
 
 const DARK_PALETTE = {

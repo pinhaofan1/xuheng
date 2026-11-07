@@ -16,7 +16,8 @@
     "F12",
     "F13",
     "F14",
-    "F15"
+    "F15",
+    "F16"
   ],
   "baseline": {
     "unit_passed": 1799,
@@ -328,6 +329,18 @@
       "kind": "feature",
       "acceptance": "任务领取、租约、心跳与恢复支持多个执行进程；进程竞争和退出不造成重复执行或重复计费。",
       "evidence": []
+    },
+    {
+      "id": "F16",
+      "group": "next",
+      "priority": "P2",
+      "title": "创作界面与仓库介绍更新",
+      "status": "done",
+      "acceptance": "作品库、章节编辑与一致性审校形成统一视觉风格，桌面和窄屏截图通过检查，主要操作通过浏览器回归，仓库 README 展示新版界面和本地运行方式。",
+      "evidence": [
+        "project_docs/UI_DESIGN.md"
+      ],
+      "completed_at": "2026-11-07"
     },
     {
       "id": "X01",

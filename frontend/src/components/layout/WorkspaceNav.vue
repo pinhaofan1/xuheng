@@ -86,7 +86,8 @@ watch(() => route.fullPath, () => { open.value = false })
 .xh-nav-brand strong{display:block;
   font-size:22px;
   letter-spacing:3px;
-  font-weight:650}
+  font-family:var(--xh-font-manuscript);
+  font-weight:700}
 .xh-nav-brand small{display:block;
   font-size:10px;
   color:var(--app-text-muted);
@@ -121,6 +122,7 @@ watch(() => route.fullPath, () => { open.value = false })
   color:var(--app-text-primary)}
 .xh-nav-item.active{color:var(--color-brand);
   background:var(--color-brand-light);
+  box-shadow:inset 3px 0 var(--color-brand);
   font-weight:600}
 .xh-project-title{margin-top:18px;
   white-space:nowrap;

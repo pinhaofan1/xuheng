@@ -2,19 +2,66 @@
   <div class="home">
     <WorkspaceNav section="library" @create="openCreateModal" @refresh="handleRefreshList" />
     <main class="home-content">
-      <header class="library-topbar"><span>我的工作空间</span><div><span class="local-workspace"><i />本地工作空间</span><n-button quaternary aria-label="应用设置" @click="appSettingsShell.open()"><AppIcon name="settings" /></n-button></div></header>
+      <header class="library-topbar">
+        <span>我的工作空间</span>
+        <span class="local-workspace"><i aria-hidden="true" />本地存储</span>
+      </header>
       <div class="library-content">
-        <header class="library-heading"><div><p class="library-eyebrow">创作，从这里继续</p><h1>作品库</h1><p>组织故事与人物，让每一次修改都有据可循。</p></div><n-button type="primary" @click="openCreateModal"><template #icon><AppIcon name="plus" /></template>新建作品</n-button></header>
-        <section class="library-overview" aria-label="作品概览"><div><AppIcon name="library" /><span>全部作品</span><strong>{{ books.length }}<small> 部</small></strong></div><div><AppIcon name="book" /><span>已有章节</span><strong>{{ books.reduce((sum, book) => sum + (book.chapter_count || 0), 0) }}<small> 章</small></strong></div><div><AppIcon name="write" /><span>累计创作</span><strong>{{ books.reduce((sum, book) => sum + (book.word_count || 0), 0).toLocaleString('zh-CN') }}<small> 字</small></strong></div></section>
-        <section class="books-section" aria-labelledby="library-list-heading">
-          <div class="section-header"><div><h2 id="library-list-heading">我的作品 <span>{{ filteredBooks.length }}</span></h2><p>进入创作工作台，或直接审校已保存的章节。</p></div><div class="section-tools"><n-input v-model:value="searchQuery" placeholder="搜索作品名称或类型" clearable :input-props="{ 'aria-label': '搜索作品' }"><template #prefix><AppIcon name="search" :size="16" /></template></n-input><n-button quaternary @click="handleRefreshList" aria-label="刷新作品列表"><AppIcon name="history" :size="18" /></n-button><n-button secondary @click="showLibrary = true">管理作品</n-button></div></div>
+        <header class="library-heading">
+          <div>
+            <p class="library-eyebrow">叙衡 <span aria-hidden="true">/</span> 创作档案</p>
+            <h1>作品库</h1>
+            <p class="library-description">继续写作，或回看需要核对的章节。</p>
+          </div>
+          <n-button type="primary" @click="openCreateModal">
+            <template #icon><AppIcon name="plus" /></template>
+            新建作品
+          </n-button>
+        </header>
+
+        <dl class="library-overview" aria-label="作品概览">
+          <div><dt>作品</dt><dd>{{ books.length }} <small>部</small></dd></div>
+          <div><dt>已写章节</dt><dd>{{ totalChapters }} <small>章</small></dd></div>
+          <div><dt>累计创作</dt><dd>{{ totalWords }} <small>字</small></dd></div>
+        </dl>
+
+        <section aria-labelledby="library-list-heading">
+          <div class="section-header">
+            <h2 id="library-list-heading">我的作品 <span v-if="searchQuery.trim()">· {{ filteredBooks.length }} 项匹配</span></h2>
+            <div class="section-tools">
+              <n-input
+                v-model:value="searchQuery"
+                placeholder="搜索作品名称或类型"
+                clearable
+                :input-props="{ 'aria-label': '搜索作品' }"
+              >
+                <template #prefix><AppIcon name="search" :size="16" /></template>
+              </n-input>
+              <n-button quaternary @click="handleRefreshList" aria-label="刷新作品列表">
+                <AppIcon name="history" :size="18" />
+              </n-button>
+              <n-button secondary @click="showLibrary = true">管理作品</n-button>
+            </div>
+          </div>
           <div v-if="loading" class="library-loading"><n-spin /><span>正在加载作品…</span></div>
-          <div v-else-if="!books.length" class="library-empty"><AppIcon name="book" :size="42" /><h3>写下你的第一个故事</h3><p>创建作品，整理人物和世界，再开始第一章。</p><n-button type="primary" @click="openCreateModal">新建作品</n-button></div>
-          <div v-else-if="!filteredBooks.length" class="library-empty"><AppIcon name="search" :size="32" /><h3>没有找到匹配的作品</h3><n-button text type="primary" @click="searchQuery = ''">清除搜索</n-button></div>
-          <BookLibrary v-else :books="filteredBooks" :busy="Boolean(deletingSlug)" @open="navigateToBook" @delete="requestDeleteBooks([$event])" />
+          <div v-else-if="!books.length" class="library-empty">
+            <AppIcon name="book" :size="36" />
+            <h3>写下你的第一个故事</h3>
+            <p>创建作品，整理人物和世界，再开始第一章。</p>
+          </div>
+          <div v-else-if="!filteredBooks.length" class="library-empty">
+            <AppIcon name="search" :size="30" />
+            <h3>没有找到匹配的作品</h3>
+            <n-button text type="primary" @click="searchQuery = ''">清除搜索</n-button>
+          </div>
+          <BookLibrary
+            v-else
+            :books="filteredBooks"
+            :busy="Boolean(deletingSlug)"
+            @open="navigateToBook"
+            @delete="requestDeleteBooks([$event])"
+          />
         </section>
-        <section class="workspace-guide"><AppIcon name="review" :size="22"/><div><h3>从创作到审校，不必切换工具</h3><p>章节编辑、人物设定、伏笔与历史依据，都可以在作品工作台中找到。</p></div><router-link to="/about">了解叙衡<AppIcon name="arrow" :size="16"/></router-link></section>
-        <footer class="home-footer"><span>叙衡 · 故事有序，创作有据</span><span>作品保存在本机</span></footer>
       </div>
     </main>
 
@@ -195,7 +242,6 @@ import WorkspaceNav from '@/components/layout/WorkspaceNav.vue'
 import AppIcon from '@/components/layout/AppIcon.vue'
 import BookLibrary, { type LibraryBook } from '@/components/home/BookLibrary.vue'
 import LibraryModal from '@/components/home/LibraryModal.vue'
-import { useAppSettingsShellStore } from '@/stores/appSettingsShellStore'
 import { parseGenreWorldFromPremise } from '@/utils/premisePresets'
 import { useStatsStore } from '@/stores/statsStore'
 import { formatApiError } from '@/utils/apiError'
@@ -217,14 +263,6 @@ const IconSpark = () =>
   h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
     h('path', { fill: 'currentColor', d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z' }))
 
-const IconLibrary = () =>
-  h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
-    h('path', { fill: 'currentColor', d: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-9 12V6h7v2h-5v2h5v2h-5v2h5v2h-7z' }))
-
-const IconSearch = () =>
-  h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
-    h('path', { fill: 'currentColor', d: 'M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z' }))
-
 const IconChevronDown = () =>
   h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
     h('path', { fill: 'currentColor', d: 'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z' }))
@@ -233,20 +271,11 @@ const IconChevronUp = () =>
   h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
     h('path', { fill: 'currentColor', d: 'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z' }))
 
-/** 与工作台顶栏一致：打开应用设置（默认「外观与主题」分区） */
-const IconThemeSettings = () =>
-  h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
-    h('path', {
-      fill: 'currentColor',
-      d: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z',
-    }))
-
 interface BookListItem extends LibraryBook {}
 
 const router = useRouter()
 const message = useMessage()
 const statsStore = useStatsStore()
-const appSettingsShell = useAppSettingsShellStore()
 
 const createInputRef = ref<any>(null)
 const showAdvanced = ref(false)
@@ -254,6 +283,10 @@ const creating = ref(false)
 const loading = ref(false)
 
 const books = ref<BookListItem[]>([])
+const totalChapters = computed(() => books.value.reduce((sum, book) => sum + (book.chapter_count || 0), 0))
+const totalWords = computed(() =>
+  books.value.reduce((sum, book) => sum + (book.word_count || 0), 0).toLocaleString('zh-CN'),
+)
 const searchQuery = ref('')
 const deletingSlug = ref<string | null>(null)
 /** 删除中（批量删除时确认按钮转圈） */
@@ -478,144 +511,169 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.books-section{background:transparent;
-  border:0;
-  box-shadow:none;
-  padding:0;
-  border-radius:0;
-  }
+.home {
+  min-height: 100vh;
+  background: var(--app-page-bg);
+  color: var(--app-text-primary);
+}
 
-.home{min-height:100vh;
-  background:var(--app-page-bg);
-  color:var(--app-text-primary)}
-.home-content{margin-left:216px;
-  min-width:0}
-.library-topbar{height:65px;
-  background:var(--app-surface);
-  border-bottom:1px solid var(--app-border);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:0 38px;
-  font-size:12px;
-  color:var(--app-text-muted)}
-.library-topbar>div{display:flex;
-  gap:18px;
-  align-items:center}
-.local-workspace{display:flex;
-  gap:7px;
-  align-items:center;
-  font-size:11px}
-.local-workspace i{width:6px;
-  height:6px;
-  background:#3c9182;
-  border-radius:50%}
-.library-content{max-width:1370px;
-  margin:0 auto;
-  padding:42px 42px 24px}
-.library-heading{display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:30px;
-  gap:20px}
-.library-eyebrow{font-size:11px;
-  color:var(--app-text-muted);
-  margin-bottom:7px;
-  letter-spacing:.05em}
-.library-heading h1{font-size:29px;
-  font-weight:650;
-  letter-spacing:-.03em;
-  margin:0 0 9px}
-.library-heading p:last-child{font-size:12px;
-  color:var(--app-text-muted)}
-.library-heading :deep(.n-button){height:37px;
-  padding:0 18px}
-.library-overview{display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:22px;
-  margin-bottom:38px}
-.library-overview>div{border:1px solid var(--app-border);
-  border-radius:9px;
-  background:var(--app-surface);
-  padding:18px 20px;
-  display:flex;
-  align-items:center;
-  gap:10px}
-.library-overview svg{color:var(--app-text-muted)}
-.library-overview span{font-size:11px;
-  color:var(--app-text-muted)}
-.library-overview strong{font-size:23px;
-  margin-left:auto;
-  font-weight:600;
-  font-variant-numeric:tabular-nums}
-.library-overview small{font-size:10px;
-  font-weight:400;
-  color:var(--app-text-muted)}
-.section-header{display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:20px;
-  margin-bottom:23px}
-.section-header h2{font-size:16px;
-  font-weight:600;
-  margin:0 0 6px}
-.section-header h2 span{font-size:11px;
-  font-weight:500;
-  background:var(--app-surface);
-  border:1px solid var(--app-border);
-  padding:1px 6px;
-  border-radius:4px;
-  margin-left:7px}
-.section-header p{font-size:11px;
-  color:var(--app-text-muted)}
-.section-tools{display:flex;
-  gap:8px;
-  align-items:center}
-.section-tools :deep(.n-input){width:220px}
-.library-loading,.library-empty{padding:70px 20px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:16px;
-  background:var(--app-surface);
-  border:1px dashed var(--app-border-strong);
-  border-radius:9px}
-.library-empty{flex-direction:column;
-  color:var(--app-text-muted);
-  font-size:12px}
-.library-empty h3{color:var(--app-text-primary);
-  font-size:18px;
-  font-weight:500}
-.workspace-guide{margin-top:40px;
-  display:flex;
-  align-items:center;
-  gap:16px;
-  padding:21px 23px;
-  border:1px solid var(--app-border);
-  background:var(--app-surface-subtle);
-  border-radius:9px;
-  color:var(--app-text-muted)}
-.workspace-guide>svg{color:var(--color-brand)}
-.workspace-guide h3{font-size:12px;
-  font-weight:500;
-  color:var(--app-text-secondary);
-  margin:0 0 5px}
-.workspace-guide p{font-size:11px;
-  line-height:1.8}
-.workspace-guide a{margin-left:auto;
-  white-space:nowrap;
-  display:flex;
-  align-items:center;
-  gap:8px;
-  text-decoration:none;
-  color:var(--app-text-muted);
-  font-size:11px}
-.home-footer{display:flex;
-  justify-content:space-between;
-  font-size:10px;
-  color:var(--app-text-muted);
-  margin-top:30px;
-  padding-top:18px}
+.home-content {
+  margin-left: 216px;
+  min-width: 0;
+}
+
+.library-topbar {
+  min-height: 65px;
+  padding: 0 clamp(24px, 5vw, 72px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-text-secondary);
+  font-size: 13px;
+}
+
+.local-workspace {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.local-workspace i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-brand);
+}
+
+.library-content {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: clamp(32px, 5vw, 62px) clamp(24px, 5vw, 72px) 48px;
+}
+
+.library-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  padding-bottom: 27px;
+  border-bottom: 1px solid var(--app-border-strong);
+}
+
+.library-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .17em;
+  color: var(--color-brand);
+  margin: 0 0 12px;
+}
+
+.library-eyebrow span { margin-inline: 4px; }
+
+.library-heading h1 {
+  font: 700 clamp(42px, 5.3vw, 72px)/1.15 var(--xh-font-manuscript);
+  letter-spacing: .025em;
+  margin: 0;
+}
+
+.library-description {
+  font-size: 14px;
+  color: var(--app-text-secondary);
+  margin: 14px 0 0;
+}
+
+.library-heading :deep(.n-button) {
+  min-height: 42px;
+  padding: 0 18px;
+}
+
+.library-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 16px 0;
+  margin: 0 0 32px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.library-overview > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding-inline: clamp(10px, 2.8vw, 34px);
+  border-inline-start: 1px solid var(--app-border);
+}
+
+.library-overview > div:first-child {
+  padding-inline-start: 0;
+  border-inline-start: 0;
+}
+
+.library-overview dt,
+.library-overview small {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+.library-overview dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.library-overview small { font-weight: 400; }
+
+.section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.section-header h2 {
+  font-size: 19px;
+  margin: 0;
+}
+
+.section-header h2 span {
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.section-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: 100%;
+}
+
+.section-tools :deep(.n-input) { width: 224px; min-width: 0; }
+.section-tools :deep(.n-button) { flex-shrink: 0; }
+
+.library-loading,
+.library-empty {
+  min-height: 220px;
+  padding: 32px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--app-surface);
+  border-block: 1px solid var(--app-border);
+  color: var(--app-text-secondary);
+}
+
+.library-empty { flex-direction: column; text-align: center; }
+.library-empty > svg { color: var(--color-brand); }
+.library-empty h3 { color: var(--app-text-primary); font: 700 20px var(--xh-font-manuscript); }
 .create-modal-body{padding-top:10px}
 .create-title-wrap{display:flex;
   align-items:center;
@@ -643,45 +701,18 @@ onMounted(() => {
 .length-tier-title{font-size:12px}
 .w-full{width:100%}
 
-@media(min-width:1650px){.library-content{padding-top:50px}
-}
-@media(max-width:1100px){.library-content{padding:30px 28px}
-.library-topbar{padding:0 28px}
-.section-header{align-items:flex-start;
-  flex-direction:column}
-.section-tools{width:100%}
-.section-tools :deep(.n-input){flex:1;
-  width:auto}
-.library-overview{gap:10px}
-.library-overview>div{padding:15px 12px;
-  gap:6px}
-.library-overview>div>svg{display:none}
-.library-overview strong{font-size:20px}
-}
-@media(max-width:800px){.home-content{margin-left:0}
-.library-topbar{padding-left:66px}
-.library-content{padding:27px 20px}
-.library-heading{margin-bottom:22px}
-.library-heading h1{font-size:25px}
-.library-heading p:last-child{max-width:200px;
-  line-height:1.8}
-.library-overview{gap:8px;
-  margin-bottom:28px}
-.library-overview>div{flex-wrap:wrap;
-  gap:6px}
-.library-overview strong{width:100%;
-  margin:0;
-  font-size:20px}
-.workspace-guide{padding:18px;
-  align-items:flex-start;
-  gap:12px}
-.workspace-guide a{display:none}
-.workspace-guide>svg{flex-shrink:0}
-.home-footer{font-size:9px}
-.create-modal-footer{flex-wrap:wrap}
-.library-heading :deep(.n-button){padding:0 12px}
-.local-workspace{font-size:10px}
+@media (max-width: 800px) {
+  .home-content { margin-left: 0; }
+  .library-topbar { padding-inline-start: 66px; }
+  .library-content { padding: 30px 20px; }
 }
 
-
+@media (max-width: 540px) {
+  .library-heading { flex-wrap: wrap; gap: 16px; padding-bottom: 20px; }
+  .library-overview { margin-bottom: 26px; }
+  .library-overview > div { flex-direction: column; }
+  .section-tools { width: 100%; }
+  .section-tools :deep(.n-input) { width: auto; flex: 1; }
+  .create-modal-footer { flex-wrap: wrap; }
+}
 </style>

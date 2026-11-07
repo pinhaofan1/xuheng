@@ -505,11 +505,10 @@ onBeforeRouteUpdate((to, from) => to.params.id !== from.params.id || to.params.s
   color:var(--app-text-muted);
   letter-spacing:.04em;
   margin:0 0 7px}
-.chapter-heading h1{font-size:24px;
-  font-weight:600;
-  letter-spacing:-.025em;
+.chapter-heading h1{font:700 clamp(26px,3vw,39px)/1.2 var(--xh-font-manuscript);
+  overflow-wrap:anywhere;
   margin:0 0 8px}
-.desk-subtitle{font-size:11px;
+.desk-subtitle{font-size:13px;
   color:var(--app-text-muted);
   margin:0}
 .desk-actions{display:flex;
@@ -572,7 +571,7 @@ onBeforeRouteUpdate((to, from) => to.params.id !== from.params.id || to.params.s
   align-items:center;
   justify-content:space-between;
   gap:12px}
-.column-heading h2{font-size:13px;
+.column-heading h2{font-size:15px;
   font-weight:600;
   margin:0}
 .manuscript-column>.column-heading{padding:17px 22px;
@@ -600,11 +599,11 @@ onBeforeRouteUpdate((to, from) => to.params.id !== from.params.id || to.params.s
   color:var(--app-text-muted);
   margin:0 0 8px}
 .prose-title{text-align:center;
-  font:600 22px/1.8 'STSong','SimSun',serif;
+  font:700 24px/1.6 var(--xh-font-manuscript);
   margin:0 0 32px}
 .manuscript-text{white-space:pre-wrap;
   overflow-wrap:anywhere;
-  font:16px/2.25 'Noto Serif SC','STSong','SimSun',serif;
+  font:17px/2.15 var(--xh-font-manuscript);
   color:var(--app-text-primary)}
 .evidence-mark{background:#fff0bc;
   color:#654e20;
@@ -805,7 +804,6 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--color-brand);
 .desk-top-actions .save-indicator{display:none}
 .desk-top-actions :deep(.n-button){font-size:10px}
 .desk-content{padding:24px 18px}
-.chapter-heading h1{font-size:22px}
 .desk-actions{gap:7px}
 .desk-actions :deep(.n-button){font-size:10px;
   padding:0 10px}

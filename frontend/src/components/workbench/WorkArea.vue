@@ -2362,9 +2362,7 @@ defineExpose({ ensureAssistedMode, streamingChapterNumber, writingPipelineStep }
 
 .editor-title h3 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.4;
+  font: 700 23px/1.4 var(--xh-font-manuscript);
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
@@ -2396,9 +2394,10 @@ defineExpose({ ensureAssistedMode, streamingChapterNumber, writingPipelineStep }
   flex: 1;
   height: 100% !important;
   min-height: 200px;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1.8;
+  padding: 18px clamp(14px, 2vw, 30px);
+  font-family: var(--xh-font-manuscript);
+  font-size: 16px;
+  line-height: 2.1;
   overflow-y: auto !important;
   resize: none;
 }
