@@ -17,7 +17,8 @@
     "F13",
     "F14",
     "F15",
-    "F16"
+    "F16",
+    "F17"
   ],
   "baseline": {
     "unit_passed": 1799,
@@ -339,6 +340,18 @@
       "acceptance": "作品库、章节编辑与一致性审校形成统一视觉风格，桌面和窄屏截图通过检查，主要操作通过浏览器回归，仓库 README 展示新版界面和本地运行方式。",
       "evidence": [
         "project_docs/UI_DESIGN.md"
+      ],
+      "completed_at": "2026-11-07"
+    },
+    {
+      "id": "F17",
+      "group": "next",
+      "priority": "P2",
+      "title": "新书创建与主要功能图文手册",
+      "status": "done",
+      "acceptance": "README 展示新书创建全过程，逐项介绍主要功能的入口、操作和模型要求，截图使用隔离示例，主要步骤经浏览器核对。",
+      "evidence": [
+        "project_docs/VALIDATION.md"
       ],
       "completed_at": "2026-11-07"
     },
